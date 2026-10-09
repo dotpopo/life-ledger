@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560" width="1000" height="560" role="img">
+  <title>记账科目：每一手的净值是怎么算出来的</title>
+  <desc>净值由六个科目相加得到：起始 88，活过一手 +8，打掉风险 +16，证据等级 A+8 / B+5 / C+2，从容出手 +8 / +4 / +1，连击每多一手 +2 封顶 +10。19 手全打满为 1008。</desc>
+
+  <rect x="0" y="0" width="1000" height="560" rx="8" fill="#faf7ef" stroke="#e8dfca" stroke-width="1.5"/>
+  <line x1="72" y1="0" x2="72" y2="560" stroke="#c2413f" stroke-width="1" opacity="0.3"/>
+
+  <text x="104" y="86" font-size="36" font-weight="600" fill="#1f1c17" font-family="Songti SC, STSong, SimSun, Noto Serif SC, serif">记账科目</text>
+  <text x="104" y="118" font-size="15" fill="#8d8272" font-family="Songti SC, STSong, SimSun, Noto Serif SC, serif">每一手的净值，就是把这几栏加起来</text>
+
+  <line x1="72" y1="150" x2="940" y2="150" stroke="#c2413f" stroke-width="2"/>
+
+  <g font-size="14" fill="#6b6153" font-family="Songti SC, STSong, SimSun, Noto Serif SC, serif">
+    <text x="104" y="180">科目</text>
+    <text x="292" y="180">记什么</text>
+    <text x="940" y="180" text-anchor="end">记多少</text>
+  </g>
+
+  <g stroke="#e8dfca" stroke-width="1">
+    <line x1="72" y1="198" x2="940" y2="198"/>
+    <line x1="72" y1="242" x2="940" y2="242"/>
+    <line x1="72" y1="286" x2="940" y2="286"/>
+    <line x1="72" y1="330" x2="940" y2="330"/>
+    <line x1="72" y1="374" x2="940" y2="374"/>
+    <line x1="72" y1="418" x2="940" y2="418"/>
+  </g>
+
+  <g font-size="16" font-weight="600" fill="#2b271f" font-family="Songti SC, STSong, SimSun, Noto Serif SC, serif">
+    <text x="104" y="224">起始</text>
+    <text x="104" y="268">活过一手</text>
+    <text x="104" y="312">打掉风险</text>
+    <text x="104" y="356">证据等级</text>
+    <text x="104" y="400">从容出手</text>
+    <text x="104" y="444">连击</text>
+  </g>
+
+  <g font-size="15" fill="#5c5346" font-family="Songti SC, STSong, SimSun, Noto Serif SC, serif">
+    <text x="292" y="224">开局就有的底子</text>
+    <text x="292" y="268">活着本身就有分，漏掉也给</text>
+    <text x="292" y="312">这一手真的把问题解决了</text>
+    <text x="292" y="356">原书自带。卡越硬，救你救得越漂亮</text>
+    <text x="292" y="400">出手时方块还在上半段 / 中段 / 最后关头</text>
+    <text x="292" y="444">连着打掉风险，每多一手多 +2，断一次归零</text>
+  </g>
+
+  <g font-size="15" font-weight="600" fill="#c2413f" text-anchor="end" font-family="SF Mono, Cascadia Mono, Consolas, monospace">
+    <text x="940" y="224">88</text>
+    <text x="940" y="268">+8</text>
+    <text x="940" y="312">+16</text>
+    <text x="940" y="356">A +8 / B +5 / C +2</text>
+    <text x="940" y="400">+8 / +4 / +1</text>
+    <text x="940" y="444">封顶 +10</text>
+  </g>
+
+  <line x1="72" y1="480" x2="940" y2="480" stroke="#c2413f" stroke-width="2"/>
+  <line x1="72" y1="485" x2="940" y2="485" stroke="#c2413f" stroke-width="1"/>
+
+  <text x="104" y="518" font-size="17" font-weight="600" fill="#2b271f" font-family="Songti SC, STSong, SimSun, Noto Serif SC, serif">19 手满分</text>
+  <text x="292" y="518" font-size="15" fill="#8d8272" font-family="Songti SC, STSong, SimSun, Noto Serif SC, serif">全 A 卡、全从容、连击不断</text>
+  <text x="940" y="520" font-size="30" font-weight="600" text-anchor="end" fill="#c2413f" font-family="SF Mono, Cascadia Mono, Consolas, monospace">1008</text>
+</svg>

@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>井 · 672 条人生法则</title>
+    <meta
+      name="description"
+      content="把 672 条循证人生建议做成一口井：风险从上面落下来，你用手上的卡消掉它。堆到顶就结算，并告诉你哪一条本来能救你。"
+    />
+    <meta name="theme-color" content="#0b0c0e" />
+    <style>
+      /* 启动屏。必须内联在 head 里，因为它要在任何外部 CSS 和 JS 之前就生效。
+         外链样式表是 JS 注入的，在它到位之前，页面会以裸 HTML 渲染出来，
+         手机上看到的就是一堆没样式的原生控件。 */
+      html,
+      body {
+        margin: 0;
+        background: #0b0c0e;
+        color: #e9e4d7;
+      }
+      #boot {
+        position: fixed;
+        inset: 0;
+        z-index: 999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 28px;
+        background: #0b0c0e;
+        font-family: "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+        transition: opacity 0.5s ease;
+      }
+      #boot.is-gone {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .boot-ring {
+        position: relative;
+        display: grid;
+        place-items: center;
+        inline-size: 92px;
+        block-size: 92px;
+      }
+      .boot-ring::before,
+      .boot-ring::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+      }
+      .boot-ring::before {
+        border: 1px solid rgba(255, 255, 255, 0.12);
+      }
+      .boot-ring::after {
+        border: 1px solid transparent;
+        border-block-start-color: #f0c869;
+        animation: bootSpin 1.15s linear infinite;
+      }
+      .boot-ring span {
+        font-size: 32px;
+        line-height: 1;
+        color: #e9e4d7;
+        animation: bootPulse 2.4s ease-in-out infinite;
+      }
+      @keyframes bootSpin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @keyframes bootPulse {
+        0%,
+        100% {
+          opacity: 0.5;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+      .boot-status {
+        margin: 0;
+        font-family: ui-monospace, "SF Mono", Consolas, monospace;
+        font-size: 12px;
+        letter-spacing: 0.16em;
+        color: rgba(233, 228, 215, 0.5);
+      }
+      .boot-bar {
+        inline-size: 168px;
+        block-size: 2px;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.1);
+        overflow: hidden;
+      }
+      .boot-bar i {
+        display: block;
+        block-size: 100%;
+        inline-size: 6%;
+        border-radius: 2px;
+        background: #f0c869;
+        transition: inline-size 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .boot-error {
+        max-inline-size: min(520px, 84vw);
+        margin: 0;
+        padding: 14px 18px;
+        font-family: ui-monospace, Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.7;
+        color: #e2837e;
+        word-break: break-word;
+        border: 1px solid rgba(194, 65, 63, 0.4);
+        border-radius: 8px;
+        background: rgba(194, 65, 63, 0.08);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .boot-ring::after,
+        .boot-ring span {
+          animation: none;
+        }
+        .boot-ring::after {
+          border-block-start-color: rgba(240, 200, 105, 0.55);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="boot">
+      <div class="boot-ring"><span>井</span></div>
+      <p class="boot-status">正在装载</p>
+      <div class="boot-bar"><i></i></div>
+    </div>
+
+    <canvas id="stage"></canvas>
+    <div id="vignette" aria-hidden="true"></div>
+
+    <!-- ===== 顶栏 ===== -->
+    <header id="hud">
+      <div class="hud-item hud-age">
+        <span class="hud-k">净值</span>
+        <b class="hud-v" id="hud-age">88</b>
+        <!-- 加分浮字。具体数字由 main.ts 填，这里只放容器 -->
+        <div class="score-pop" id="score-pop" aria-live="polite"></div>
+      </div>
+      <div class="hud-item">
+        <span class="hud-k">手数</span>
+        <b class="hud-v"><span id="hud-turn">1</span><i id="hud-turn-max">/19</i></b>
+      </div>
+      <div class="hud-item hud-narrow-hide">
+        <span class="hud-k">躲过</span>
+        <b class="hud-v" id="hud-cleared">0</b>
+      </div>
+      <div class="hud-item">
+        <span class="hud-k">井</span>
+        <b class="hud-v"><span id="hud-layers">0</span><i id="hud-layer-max">/10</i></b>
+      </div>
+      <button id="help-btn" class="ghost" type="button">规则</button>
+    </header>
+
+    <!-- ===== 三种资源 ===== -->
+    <aside id="res" aria-label="资源">
+      <div class="res-row">
+        <span class="res-k">钱</span>
+        <span class="res-track"><i id="res-money"></i></span>
+        <b class="res-v" id="res-money-v">8</b>
+      </div>
+      <div class="res-row">
+        <span class="res-k">时间</span>
+        <span class="res-track"><i id="res-time"></i></span>
+        <b class="res-v" id="res-time-v">6</b>
+      </div>
+      <div class="res-row is-key">
+        <span class="res-k">毅力</span>
+        <span class="res-track"><i id="res-will"></i></span>
+        <b class="res-v" id="res-will-v">4</b>
+      </div>
+      <p class="res-note">钱和时间大多不缺，缺的是毅力。</p>
+    </aside>
+
+    <!-- ===== 正在落下的风险 ===== -->
+    <div id="risk" aria-live="polite">
+      <span class="risk-group" id="risk-group">身体</span>
+      <b class="risk-title" id="risk-title">车祸</b>
+      <span class="risk-hint" id="risk-hint">出一张「身体」的卡</span>
+    </div>
+    <!-- ===== 预览：一层 HUD，不是面板。
+         压得极透、只做轻模糊，底下的手牌和正在下落的方块都要能看见 ===== -->
+    <aside id="preview" hidden aria-label="卡牌详情">
+      <header class="pv-head">
+        <span class="pv-group" id="pv-group">身体</span>
+        <span class="pv-id" id="pv-id">01 章 · 1 条</span>
+        <span class="pv-pos" id="pv-pos">1/3</span>
+        <button id="pv-close" class="pv-close" type="button" aria-label="关闭预览">✕</button>
+      </header>
+      <!-- 页码点。相册里切换图片不用学：左右滑，底下几个点告诉你
+           一共几张、现在第几张。位置信息 #pv-pos 已经在读屏里报了，
+           这排点纯装饰，所以 aria-hidden。 -->
+      <div class="pv-dots" id="pv-dots" aria-hidden="true"></div>
+      <div class="pv-body" id="pv-body">
+        <h2 class="pv-title" id="pv-title"></h2>
+        <p class="pv-plain" id="pv-plain"></p>
+        <p class="pv-meta" id="pv-meta"></p>
+        <p class="pv-src" id="pv-src"></p>
+      </div>
+      <footer class="pv-foot">
+        <button id="pv-prev" class="pv-arrow" type="button" aria-label="上一张">‹</button>
+        <button id="pv-play" class="pv-play" type="button">出这张牌</button>
+        <button id="pv-next" class="pv-arrow" type="button" aria-label="下一张">›</button>
+      </footer>
+    </aside>
+
+    <!-- ===== 操作 ===== -->
+    <div id="actions">
+      <button id="pass-btn" class="ghost" type="button">放过这一手</button>
+    </div>
+
+    <!-- ===== 提示 ===== -->
+    <div id="toast" role="status"></div>
+
+    <!-- ===== 结算 ===== -->
+    <div id="settle" hidden>
+      <div class="settle-inner">
+        <p class="settle-kicker" id="settle-kicker">结算</p>
+        <h1 class="settle-age"><b id="settle-age">88</b> 净值</h1>
+        <p class="settle-cause" id="settle-cause"></p>
+        <p class="settle-scene" id="settle-scene"></p>
+        <p class="settle-stat" id="settle-stat"></p>
+        <p class="settle-perfect" id="settle-perfect"></p>
+
+        <div class="settle-saves">
+          <h3>本来能救你的几条</h3>
+          <ul id="settle-saves"></ul>
+        </div>
+
+        <div class="settle-actions">
+          <button id="again-btn" class="primary" type="button">再来一局</button>
+          <button id="share-btn" class="ghost" type="button">存下这张图</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 规则 ===== -->
+    <div id="help" hidden>
+      <div class="help-inner">
+        <h2>怎么玩</h2>
+        <ol>
+          <li>风险从井口落下来。它落地就变成井里的一层，永久留在那儿。</li>
+          <li>你手上三张卡，每张来自原书的一条建议。卡上写着它的「域」和三项成本（钱 / 时间 / 毅力）。</li>
+          <li><b>出一张同域的卡、而且付得起，就能把正在落下的风险打掉。</b></li>
+          <li><b>每个风险只有一次机会。</b>点错了（域不对，或者付不起），方块就直接砸下去堆一层，进下一个风险。</li>
+          <li>撑满 <b>19 手</b>、井没堆满 10 层，这辈子就算圆满。</li>
+          <li>钱和时间基本不缺，<b>毅力才是真稀缺的</b>。出牌之前先看成本。</li>
+          <li>「放过这一手」不是认输。有些风险你确实接不住，省下毅力比硬撑更值。</li>
+        </ol>
+        <p class="help-note">
+          <b>净值</b>是你这一生的账。活过一手、打掉一个风险、挡得漂亮，
+          都会一笔一笔记上去。满分 <b id="help-perfect">1008</b>。<br />
+          每一手都会加分：活过 <b>+8</b>，打掉风险 <b>+16</b>，再按证据等级（A +8 / B +5 / C +2）、
+          出手从容程度（方块还在上半段 +8 / 中段 +4 / 最后关头 +1）、
+          连击（每多连一手 +2，封顶 +10）往上叠。漏一次，连击归零。<br />
+          出牌：点卡片，或按 <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>。放过：<kbd>空格</kbd>。<br />
+          看详情：<b>长按卡片</b>（电脑上是把鼠标停在卡片上），进去以后
+          <b>左右滑动</b>或按 <kbd>←</kbd> <kbd>→</kbd> 换牌，<kbd>Esc</kbd> 或点空白处退出。
+          预览是一层透明的 HUD，看字的同时方块还在往下掉。<br />
+          内容全部来自《高性价比人生指南》672 条，每条都有成本、收益、证据等级和原始出处。
+        </p>
+        <button id="help-close" class="primary" type="button">开始</button>
+      </div>
+    </div>
+
+    <footer id="credit">
+      内容来自
+      <a href="https://github.com/eternity4719/HowToLiveBetter" target="_blank" rel="noopener"
+        >高性价比人生指南</a
+      >
+      · CC BY 4.0
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" width="1000" height="620" role="img">
+  <title>人生账本：把一局游戏记成一本账</title>
+  <desc>每一手写成一笔账。支出的是钱、时间、毅力；入账的是活过、打掉风险、证据等级、出手从容和连击；最右边是滚动净值。示例数字取自一次真实对局。</desc>
+
+  <rect x="0" y="0" width="1000" height="620" rx="8" fill="#faf7ef" stroke="#e8dfca" stroke-width="1.5"/>
+  <line x1="72" y1="0" x2="72" y2="620" stroke="#c2413f" stroke-width="1" opacity="0.3"/>
+
+  <text x="104" y="86" font-size="36" font-weight="600" fill="#1f1c17" font-family="Songti SC, STSong, SimSun, Noto Serif SC, serif">人生账本</text>
+  <text x="104" y="118" font-size="15" fill="#8d8272" font-family="Songti SC, STSong, SimSun, Noto Serif SC, serif">高性价比人生指南 · 672 条 · 互动版</text>
+
+  <rect x="846" y="34" width="94" height="94" rx="7" fill="#c2413f" opacity="0.9"/>
+  <text x="893" y="78" font-size="21" font-weight="600" text-anchor="middle" fill="#faf7ef" font-family="Songti SC, STSong, SimSun, Noto Serif SC, serif">高性</text>
+  <text x="893" y="106" font-size="21" font-weight="600" text-anchor="middle" fill="#faf7ef" font-family="Songti SC, STSong, SimSun, Noto Serif SC, serif">价比</text>
+
+  <line x1="72" y1="150" x2="940" y2="150" stroke="#c2413f" stroke-width="2"/>
+
+  <g font-size="14" fill="#6b6153" font-family="Songti SC, STSong, SimSun, Noto Serif SC, serif">
+    <text x="104" y="178">手</text>
+    <text x="168" y="178">摘要</text>
+    <text x="614" y="178">支出</text>
+    <text x="740" y="178">入账</text>
+    <text x="940" y="178" text-anchor="end">净值</text>
+  </g>
+
+  <g stroke="#e8dfca" stroke-width="1">
+    <line x1="72" y1="196" x2="940" y2="196"/>
+    <line x1="72" y1="234" x2="940" y2="234"/>
+    <line x1="72" y1="272" x2="940" y2="272"/>
+    <line x1="72" y1="310" x2="940" y2="310"/>
+    <line x1="72" y1="348" x2="940" y2="348"/>
+    <line x1="72" y1="386" x2="940" y2="386"/>
+  </g>
+
+  <g font-size="15" fill="#2b271f" font-family="Songti SC, STSong, SimSun, Noto Serif SC, serif">
+    <text x="104" y="220">开局</text>
+    <text x="168" y="220">起始净值</text>
+    <text x="168" y="258">挡掉「车祸」 · 证据 A · 从容 · 连击×1</text>
+    <text x="168" y="296">挡掉「押金要不回」 · 证据 B · 从容 · 连击×2</text>
+    <text x="168" y="334">漏掉「毒蘑菇」，井里多一层</text>
+    <text x="168" y="372">挡掉「替人担保」 · 证据 A · 稳 · 连击×1</text>
+    <text x="168" y="410" fill="#8d8272">中间 14 手略</text>
+    <text x="104" y="258">1</text>
+    <text x="104" y="296">2</text>
+    <text x="104" y="334">3</text>
+    <text x="104" y="372">4</text>
+  </g>
+
+  <g font-size="15" fill="#8d8272" font-family="SF Mono, Cascadia Mono, Consolas, monospace">
+    <text x="614" y="258">毅力 3</text>
+    <text x="614" y="296">钱 2</text>
+    <text x="614" y="334">—</text>
+    <text x="614" y="372">时间 1</text>
+  </g>
+
+  <g font-size="15" font-weight="600" fill="#c2413f" font-family="SF Mono, Cascadia Mono, Consolas, monospace">
+    <text x="740" y="258">+40</text>
+    <text x="740" y="296">+39</text>
+    <text x="740" y="334">+8</text>
+    <text x="740" y="372">+36</text>
+  </g>
+
+  <g font-size="15" fill="#2b271f" font-family="SF Mono, Cascadia Mono, Consolas, monospace" text-anchor="end">
+    <text x="940" y="220">88</text>
+    <text x="940" y="258">128</text>
+    <text x="940" y="296">167</text>
+    <text x="940" y="334">175</text>
+    <text x="940" y="372">211</text>
+    <text x="940" y="410" fill="#8d8272">…</text>
+  </g>
+
+  <line x1="72" y1="428" x2="940" y2="428" stroke="#c2413f" stroke-width="2"/>
+  <line x1="72" y1="433" x2="940" y2="433" stroke="#c2413f" stroke-width="1"/>
+
+  <text x="104" y="466" font-size="15" fill="#2b271f" font-family="Songti SC, STSong, SimSun, Noto Serif SC, serif">19</text>
+  <text x="168" y="466" font-size="17" font-weight="600" fill="#2b271f" font-family="Songti SC, STSong, SimSun, Noto Serif SC, serif">活满 19 手，井没满</text>
+  <text x="740" y="466" font-size="15" fill="#8d8272" font-family="Songti SC, STSong, SimSun, Noto Serif SC, serif">合计</text>
+  <text x="940" y="468" font-size="30" font-weight="600" text-anchor="end" fill="#c2413f" font-family="SF Mono, Cascadia Mono, Consolas, monospace">972</text>
+
+  <text x="104" y="522" font-size="14" fill="#8d8272" font-family="Songti SC, STSong, SimSun, Noto Serif SC, serif">净值满分 1008。井堆满 10 层就提前结算。</text>
+  <text x="104" y="550" font-size="14" fill="#b3a992" font-family="Songti SC, STSong, SimSun, Noto Serif SC, serif">表里的 972 取自一次真实对局，不是编的。</text>
+
+  <g font-size="13" fill="#8d8272" font-family="Songti SC, STSong, SimSun, Noto Serif SC, serif">
+    <rect x="640" y="506" width="10" height="10" rx="2" fill="#c2413f"/>
+    <text x="658" y="516">身体</text>
+    <rect x="716" y="506" width="10" height="10" rx="2" fill="#b08a3e"/>
+    <text x="734" y="516">钱</text>
+    <rect x="768" y="506" width="10" height="10" rx="2" fill="#5b7a85"/>
+    <text x="786" y="516">法律</text>
+    <rect x="838" y="506" width="10" height="10" rx="2" fill="#6e6a8a"/>
+    <text x="856" y="516">工作</text>
+  </g>
+</svg>

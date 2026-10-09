@@ -1,0 +1,905 @@
+:root {
+  --ink: #0b0c0e;
+  --paper: #e9e4d7;
+  --muted: rgba(233, 228, 215, 0.56);
+  --faint: rgba(233, 228, 215, 0.3);
+  --line: rgba(255, 255, 255, 0.09);
+  --line-strong: rgba(255, 255, 255, 0.18);
+  --panel: rgba(13, 15, 19, 0.76);
+  --amber: #f0c869;
+  --danger: #c2413f;
+
+  --sans: "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", "Noto Sans SC",
+    system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Consolas,
+    "Liberation Mono", monospace;
+
+  --r: 10px;
+  --pad: 22px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--ink);
+  color: var(--paper);
+  font: 14px/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  touch-action: manipulation;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 0;
+}
+
+/* 暗角。把注意力收到中间的井和手牌上，也压掉画面四角的杂光。 */
+#vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 76% 70% at 50% 46%,
+    rgba(6, 7, 9, 0) 0%,
+    rgba(6, 7, 9, 0.36) 60%,
+    rgba(6, 7, 9, 0.8) 100%
+  );
+}
+
+a {
+  color: var(--amber);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* ============ 顶栏 ============ */
+#hud {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 14px var(--pad);
+  pointer-events: none;
+}
+
+#hud > * {
+  pointer-events: auto;
+}
+
+.hud-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.hud-k {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--faint);
+}
+
+.hud-v {
+  font: 500 20px/1 var(--mono);
+  letter-spacing: 0.02em;
+}
+
+.hud-v i {
+  font-style: normal;
+  font-size: 13px;
+  color: var(--faint);
+}
+
+/* 净值那一格要当浮字的定位基准 */
+.hud-age {
+  position: relative;
+}
+
+/* 加分浮字：数字往上飘一点就淡出，像游戏里的伤害数字。
+   绝对定位，所以不占 HUD 的布局，顶栏高度不会被它撑开。 */
+.score-pop {
+  position: absolute;
+  inset-block-start: 100%;
+  inset-inline-start: 0;
+  margin-block-start: 5px;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.score-pop b {
+  font: 500 19px/1 var(--mono);
+  color: var(--amber);
+}
+
+.score-pop span {
+  font: 400 11px/1 var(--mono);
+  color: var(--muted);
+}
+
+.score-pop.is-on {
+  animation: scorePop 1.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes scorePop {
+  0% {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  16% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  70% {
+    opacity: 1;
+    transform: translateY(-5px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+}
+
+#help-btn {
+  margin-inline-start: auto;
+}
+
+.ghost {
+  padding: 8px 15px;
+  font-size: 13px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  transition:
+    color 0.2s,
+    border-color 0.2s,
+    background 0.2s;
+}
+
+.ghost:hover {
+  color: var(--paper);
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.primary {
+  padding: 11px 26px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #14161a;
+  background: var(--amber);
+  border-radius: 999px;
+  transition: filter 0.2s;
+}
+
+.primary:hover {
+  filter: brightness(1.08);
+}
+
+/* ============ 资源 ============ */
+#res {
+  position: fixed;
+  inset-block-start: 92px;
+  inset-inline-start: var(--pad);
+  z-index: 10;
+  inline-size: 236px;
+  display: grid;
+  gap: 12px;
+}
+
+.res-row {
+  display: grid;
+  grid-template-columns: 34px 1fr 30px;
+  align-items: center;
+  gap: 10px;
+}
+
+.res-k {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.res-track {
+  block-size: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.res-track i {
+  display: block;
+  block-size: 100%;
+  inline-size: 50%;
+  border-radius: 3px;
+  background: var(--paper);
+  transition: inline-size 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.res-row.is-key .res-track i {
+  background: var(--amber);
+}
+
+.res-row.is-key .res-k {
+  color: var(--amber);
+}
+
+.res-v {
+  font: 500 13px/1 var(--mono);
+  text-align: end;
+  color: var(--muted);
+}
+
+.res-row.is-key .res-v {
+  color: var(--paper);
+}
+
+.res-note {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--faint);
+}
+
+/* ============ 正在落下的风险 ============ */
+#risk {
+  position: fixed;
+  inset-block-start: 58px;
+  inset-inline: 0;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+#risk.is-on {
+  opacity: 1;
+}
+
+.risk-group {
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.risk-title {
+  font-size: 23px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+}
+
+.risk-hint {
+  font-size: 12px;
+  color: var(--faint);
+}
+
+/* ============ 预览：悬在场景里的一层 HUD ============ */
+/*
+ * 不透明度就是「现实感的刻度」：
+ * 低透明 = 现实里的实体（井、方块、手牌），高透明 = 叠在上面的虚拟层。
+ * 这一层是虚拟层，所以压到 0.3 并且只做 9px 轻模糊。
+ * 模糊重了就把方块糊没了，那就退化成普通网页面板，虚拟感全没。
+ */
+#preview {
+  --pv-tilt: rotateY(5deg) rotateX(2deg);
+  position: fixed;
+  inset-block-start: 74px;
+  inset-inline-start: var(--pad);
+  z-index: 12;
+  inline-size: min(352px, 27vw);
+  max-block-size: 66vh;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(240, 200, 105, 0.22);
+  border-radius: 14px;
+  background: rgba(8, 9, 11, 0.3);
+  backdrop-filter: blur(9px) saturate(1.15);
+  -webkit-backdrop-filter: blur(9px) saturate(1.15);
+  /* 一点点透视和倾斜，让它看起来是悬在空间里的一块板，不是贴在屏幕上的网页 */
+  transform: perspective(1400px) var(--pv-tilt);
+  box-shadow: 0 0 46px rgba(240, 200, 105, 0.07);
+  opacity: 0;
+  transition: opacity 0.26s ease;
+  animation: pvFloat 7.5s ease-in-out infinite;
+  overflow: hidden;
+  /*
+   * 只允许浏览器处理纵向滚动，横向手势留给页面自己。
+   * body 上是 touch-action: manipulation（= pan-x pan-y），所以横滑会被
+   * 浏览器当成 pan 手势接管，直接对我们的指针流发 pointercancel ——
+   * 手机上表现就是「预览卡片怎么滑都换不了张」。
+   * 实测日志：pointerdown → pointermove ×2 → pointercancel（x=0）。
+   */
+  touch-action: pan-y;
+}
+
+#preview.is-shown {
+  opacity: 1;
+}
+
+#preview[hidden] {
+  display: none;
+}
+
+@keyframes pvFloat {
+  0%,
+  100% {
+    transform: perspective(1400px) var(--pv-tilt) translateY(0);
+  }
+  50% {
+    transform: perspective(1400px) var(--pv-tilt) translateY(-5px);
+  }
+}
+
+.pv-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 15px 10px;
+}
+
+.pv-group {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.pv-id {
+  font: 400 11.5px/1 var(--mono);
+  color: var(--faint);
+}
+
+.pv-pos {
+  font: 400 11.5px/1 var(--mono);
+  color: var(--faint);
+  margin-inline-end: auto;
+}
+
+.pv-close {
+  flex: none;
+  inline-size: 28px;
+  block-size: 28px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  transition:
+    color 0.16s,
+    border-color 0.16s,
+    background 0.16s;
+}
+
+.pv-close:hover {
+  color: var(--paper);
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* 页码点：像相册底下那排。当前那张拉长成一条金色胶囊，
+   所以「一共几张、现在第几张」不用读数字也知道。 */
+.pv-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 15px 11px;
+}
+
+.pv-dot {
+  inline-size: 6px;
+  block-size: 6px;
+  border-radius: 999px;
+  background: rgba(233, 228, 215, 0.2);
+  transition:
+    inline-size 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    background 0.22s;
+}
+
+.pv-dot.is-on {
+  inline-size: 17px;
+  background: var(--amber);
+}
+
+/* 换牌：整块内容从侧面滑进来，像相册翻页。
+   原来是原地抖 20px，反馈太弱，看着像没翻。 */
+.pv-body {
+  flex: 1;
+  min-block-size: 0;
+  padding: 0 15px 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* touch-action 不继承，滚动容器要自己再声明一遍 */
+  touch-action: pan-y;
+}
+
+.pv-body.is-swap {
+  animation: pvSwap 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes pvSwap {
+  from {
+    opacity: 0;
+    transform: translateX(var(--pv-dx, 52%));
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.pv-title {
+  margin: 0 0 10px;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.pv-plain {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  line-height: 1.85;
+  color: rgba(233, 228, 215, 0.82);
+}
+
+.pv-meta {
+  margin: 0 0 12px;
+  font: 400 11.5px/1.8 var(--mono);
+  color: var(--muted);
+}
+
+.pv-src {
+  margin: 0;
+  padding-block-start: 10px;
+  border-block-start: 1px solid var(--line);
+  font-size: 10.5px;
+  line-height: 1.65;
+  color: var(--faint);
+  word-break: break-word;
+}
+
+/* 底部：左右各一个大按钮 + 中间一键出牌。
+   之前把 ‹ › 塞在标题行角落，又小又难点，等于没有。 */
+.pv-foot {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px 12px;
+  border-block-start: 1px solid var(--line);
+}
+
+.pv-arrow {
+  flex: none;
+  inline-size: 58px;
+  font-size: 25px;
+  line-height: 1;
+  color: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  transition:
+    background 0.16s,
+    border-color 0.16s;
+}
+
+.pv-arrow:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+.pv-arrow:active {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.pv-play {
+  flex: 1;
+  padding: 12px 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #14161a;
+  background: var(--amber);
+  border-radius: 10px;
+  transition:
+    filter 0.16s,
+    background 0.16s,
+    color 0.16s;
+}
+
+.pv-play:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.pv-play:disabled {
+  color: var(--faint);
+  background: rgba(255, 255, 255, 0.07);
+  cursor: not-allowed;
+}
+/* ============ 操作 ============ */
+#actions {
+  position: fixed;
+  inset-block-end: var(--pad);
+  inset-inline-end: var(--pad);
+  z-index: 10;
+  display: flex;
+  gap: 10px;
+}
+
+/* ============ 提示 ============ */
+#toast {
+  position: fixed;
+  inset-block-end: 34px;
+  inset-inline: 0;
+  z-index: 30;
+  margin-inline: auto;
+  inline-size: fit-content;
+  max-inline-size: min(520px, 86vw);
+  padding: 10px 20px;
+  font-size: 13px;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  backdrop-filter: blur(14px);
+  opacity: 0;
+  translate: 0 12px;
+  pointer-events: none;
+  transition:
+    opacity 0.28s,
+    translate 0.28s;
+}
+
+#toast.is-on {
+  opacity: 1;
+  translate: 0 0;
+}
+
+/* ============ 结算 ============ */
+#settle,
+#help {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(6, 7, 9, 0.9);
+  backdrop-filter: blur(10px);
+  overflow-y: auto;
+}
+
+#settle[hidden],
+#help[hidden] {
+  display: none;
+}
+
+.settle-inner,
+.help-inner {
+  inline-size: min(560px, 100%);
+  padding: 34px 34px 30px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(15, 17, 21, 0.9);
+}
+
+.settle-kicker {
+  margin: 0 0 12px;
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  color: var(--faint);
+}
+
+.settle-age {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.settle-age b {
+  font: 500 76px/1 var(--mono);
+  color: var(--paper);
+  letter-spacing: -0.02em;
+}
+
+.settle-cause {
+  margin: 0 0 12px;
+  font-size: 30px;
+  font-weight: 500;
+  color: var(--danger);
+}
+
+.settle-scene {
+  margin: 0 0 20px;
+  font-size: 14px;
+  line-height: 1.85;
+  color: rgba(233, 228, 215, 0.78);
+}
+
+.settle-stat {
+  margin: 0 0 26px;
+  padding: 12px 0;
+  border-block: 1px solid var(--line);
+  font: 400 13px/1.6 var(--mono);
+  color: var(--muted);
+}
+
+/* 满分参照。紧贴在统计条下面，把「812」放进「1008」的尺子里 */
+.settle-perfect {
+  margin: -18px 0 26px;
+  font: 400 12px/1.6 var(--mono);
+  color: var(--faint);
+}
+
+.settle-saves h3 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.settle-saves ul {
+  margin: 0 0 28px;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 11px;
+}
+
+.settle-saves li {
+  display: grid;
+  grid-template-columns: 52px 1fr 34px;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+/* 「一条都没漏」这种只有一句话的条目。
+   三列网格会把这句话塞进 52px 的第一列里，一个字一行，所以单独放开。 */
+.settle-saves li.is-empty {
+  grid-template-columns: 1fr;
+  color: var(--muted);
+}
+
+.settle-saves .sid {
+  font: 400 12px/1 var(--mono);
+  color: var(--faint);
+}
+
+.settle-saves .sgrade {
+  font: 500 12px/1 var(--mono);
+  text-align: end;
+}
+
+.settle-actions {
+  display: flex;
+  gap: 12px;
+}
+
+/* ============ 规则 ============ */
+.help-inner h2 {
+  margin: 0 0 18px;
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.help-inner ol {
+  margin: 0 0 20px;
+  padding-inline-start: 20px;
+  display: grid;
+  gap: 10px;
+  font-size: 13.5px;
+  line-height: 1.8;
+  color: rgba(233, 228, 215, 0.8);
+}
+
+.help-inner b {
+  color: var(--paper);
+  font-weight: 500;
+}
+
+.help-note {
+  margin: 0 0 24px;
+  padding-block-start: 16px;
+  border-block-start: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--faint);
+}
+
+kbd {
+  font: 400 11px/1 var(--mono);
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+}
+
+/* ============ 页脚 ============ */
+#credit {
+  position: fixed;
+  inset-block-end: 14px;
+  inset-inline-start: var(--pad);
+  z-index: 10;
+  font-size: 11px;
+  color: rgba(233, 228, 215, 0.24);
+}
+
+/* ============ 窄屏 ============ */
+@media (max-width: 860px) {
+  :root {
+    --pad: 14px;
+  }
+
+  #hud {
+    gap: 16px;
+  }
+
+  /* 窄屏放不下四项，把「躲过」收起来（结算页里还有）。
+     净值 / 手数 / 井 这三项是玩家当下最需要的。 */
+  .hud-narrow-hide {
+    display: none;
+  }
+
+  /* 窄屏顶部没有空档：资源行占 60~82，风险条占 96~124，
+     浮字挂在顶栏下面必然压到东西。
+     改成落在井的中间、水平居中，像游戏里的伤害数字，
+     1.7 秒就淡走，不影响读牌。 */
+  .score-pop {
+    position: fixed;
+    inset-block-start: 44vh;
+    inset-inline: 0;
+    justify-content: center;
+    margin-block-start: 0;
+  }
+
+  /* 资源改成一行，把纵向空间让给手牌面板 */
+  #res {
+    inset-block-start: 60px;
+    inset-inline: var(--pad);
+    inline-size: auto;
+    display: flex;
+    gap: 12px;
+  }
+
+  .res-row {
+    flex: 1;
+    grid-template-columns: 24px 1fr 22px;
+    gap: 6px;
+  }
+
+  .res-k {
+    font-size: 11px;
+  }
+
+  .res-v {
+    font-size: 12px;
+  }
+
+  .res-note {
+    display: none;
+  }
+
+  #risk {
+    inset-block-start: 96px;
+    gap: 10px;
+  }
+
+  .risk-title {
+    font-size: 19px;
+  }
+
+  .risk-hint {
+    display: none;
+  }
+
+  /* 预览 HUD 放顶部，避开底部的手牌。
+     它只盖到井的中段，而方块下落是持续动作，透过 HUD 仍然看得见。 */
+  #preview {
+    /* 窄屏改成向前倾，像抬头看一块悬在面前的板 */
+    --pv-tilt: rotateX(-5deg);
+    inset-block-start: 128px;
+    inset-block-end: auto;
+    inset-inline: var(--pad);
+    inline-size: auto;
+    max-block-size: 46vh;
+  }
+
+  .pv-title {
+    font-size: 15.5px;
+  }
+
+  .pv-plain {
+    font-size: 12px;
+    line-height: 1.8;
+  }
+
+  /* 手机上按钮要够大，拇指才点得准 */
+  .pv-foot {
+    padding: 10px;
+    gap: 9px;
+  }
+
+  .pv-arrow {
+    inline-size: 62px;
+    font-size: 27px;
+  }
+
+  .pv-play {
+    padding: 14px 0;
+    font-size: 15px;
+  }
+
+  #actions {
+    inset-block-end: 18px;
+  }
+
+  #credit {
+    display: none;
+  }
+
+  .settle-inner,
+  .help-inner {
+    padding: 26px 22px;
+  }
+
+  .settle-age b {
+    font-size: 58px;
+  }
+
+  .settle-cause {
+    font-size: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

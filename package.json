@@ -1,0 +1,35 @@
+{
+  "name": "life-ledger",
+  "version": "0.1.0",
+  "description": "人生账本 · 把《高性价比人生指南》的 672 条建议做成一口井。风险从上面落下来，你用手上的卡挡掉它，每一笔都记进你的净值。",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "game",
+    "three.js",
+    "webgl",
+    "browser-game",
+    "life",
+    "ledger",
+    "cost-effectiveness",
+    "chinese"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "cards": "node tools/build-cards.mjs",
+    "verify:score": "node tools/verify-score.cjs",
+    "verify:preview": "node tools/verify-preview.cjs",
+    "verify:flow": "node tools/verify-flow.cjs",
+    "verify:stack": "node tools/verify-stack.cjs"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@types/three": "^0.186.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0"
+  }
+}
