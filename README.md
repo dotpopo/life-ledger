@@ -7,7 +7,7 @@
 风险从井口掉下来，你用手上三张卡把它挡掉。
 挡得漂亮就多记一笔，漏了就堆在井里。堆满 10 层，这本账就结了。
 
-[![license](https://img.shields.io/badge/code-MIT-2b271f)](#license)
+[![license](https://img.shields.io/badge/code-MIT-2b271f)](./LICENSE)
 [![content](https://img.shields.io/badge/content-CC%20BY%204.0-c2413f)](https://github.com/eternity4719/HowToLiveBetter)
 [![data](https://img.shields.io/badge/法则-672%20条-b08a3e)](./public/cards.json)
 [![three](https://img.shields.io/badge/three.js-0.186-6e6a8a)](https://threejs.org/)
@@ -186,8 +186,11 @@ Playwright 的 `mouse.*` 产生的是鼠标事件，不经过浏览器的手势�
 
 ## License
 
-- **代码**：MIT。`LICENSE` 文件还没补，补之前请先当作「保留所有权利」。
-- **内容与数据**：CC BY 4.0，版权归 [HowToLiveBetter](https://github.com/eternity4719/HowToLiveBetter) 作者 eternity4719。
+- **代码**：MIT，见 [LICENSE](./LICENSE)。Copyright (c) 2026 dotpopo。
+- **内容与数据**（`public/cards.json` 和游戏里出现的建议文本）：CC BY 4.0，
+  版权归 [HowToLiveBetter](https://github.com/eternity4719/HowToLiveBetter) 作者 eternity4719。
+- **两者范围不同**：MIT 只覆盖代码，不覆盖原书内容。你要拿走这个游戏的代码随你，
+  但要拿走那 672 条建议，请按 CC BY 4.0 署名原作者。
 - 本项目与原作者无从属关系。
 
 <div align="center">
