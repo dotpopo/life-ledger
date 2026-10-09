@@ -30,15 +30,42 @@ fs.mkdirSync(OUT, { recursive: true });
 
   await p.goto('http://localhost:3100/', { waitUntil: 'domcontentloaded', timeout: 40000 });
   await p.waitForTimeout(4000);
+  await p.click('#start .start-card[data-mode="game"]');
+  await p.waitForTimeout(400);
   await p.click('#help-close');
 
-  // 关键：一张牌都不出，让风险全部自然落地
+  /*
+   * 一张牌都不出，让风险全部落地堆起来。
+   *
+   * 三个坑：
+   * 1. 每次落地都会弹讲解卡并 hold 住回合，不点掉就再也不会有下一块方块。
+   * 2. 下落时长已经放慢到 24s（首手），加上无头软渲染的固定步长钳制，
+   *    真等自然落地要一分钟以上。所以用 scene.slamRisk() 加速下坠。
+   *    它走的是**同一条** riskLanded → bankLanded → settleFalling 路径，
+   *    只是把剩余时长压短，堆叠逻辑照样被完整覆盖。
+   * 3. **每块方块只能砸一次**。slamRisk 会把下落计时重置成 0，
+   *    反复调用等于每 180ms 把进度清零，方块永远到不了底。
+   */
   const marks = [];
+  let slammed = false;
   for (let i = 0; i < 5; i++) {
-    for (let w = 0; w < 60; w++) {
-      const n = await p.evaluate(() => window.__game.scene.debugState().layers);
-      if (n >= i + 1) break;
-      await p.waitForTimeout(500);
+    for (let w = 0; w < 100; w++) {
+      const st = await p.evaluate(() => ({
+        layers: window.__game.scene.debugState().layers,
+        falling: window.__game.scene.debugState().falling,
+        lesson: !document.getElementById('lesson').hidden,
+        over: window.__game.state().over,
+      }));
+      if (st.layers >= i + 1 || st.over) break;
+      if (st.lesson) {
+        // 读完讲解，开下一手，下一块方块可以重新砸
+        await p.click('#lesson-next');
+        slammed = false;
+      } else if (st.falling && !slammed) {
+        await p.evaluate(() => window.__game.scene.slamRisk());
+        slammed = true;
+      }
+      await p.waitForTimeout(180);
     }
     const st = await p.evaluate(() => window.__game.scene.debugState());
     marks.push({ 第几层: st.layers, layerYs: st.layerYs });

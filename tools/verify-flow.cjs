@@ -49,6 +49,8 @@ fs.mkdirSync(OUT, { recursive: true });
   await shot('a-help.png');
 
   // 关掉规则开始
+  await p.click('#start .start-card[data-mode="game"]');
+  await p.waitForTimeout(400);
   await p.click('#help-close');
   await p.waitForTimeout(2500);
 
@@ -76,6 +78,16 @@ fs.mkdirSync(OUT, { recursive: true });
     await shot('c-hover.png');
   }
 
+  /** 讲解卡会 hold 住回合，测试里等价于点「继续」 */
+  const dismissLesson = async () => {
+    const open = await p.evaluate(() => !document.getElementById('lesson').hidden);
+    if (open) {
+      await p.click('#lesson-next');
+      await p.waitForTimeout(200);
+    }
+    return open;
+  };
+
   // 找一张能对上的卡并点它
   const pick = await p.evaluate(() => window.__game?.playable?.() ?? null);
   console.log('可出的牌:', JSON.stringify(pick));
@@ -87,14 +99,23 @@ fs.mkdirSync(OUT, { recursive: true });
     await shot('d-cleared.png');
     const st2 = await p.evaluate(() => window.__game?.scene?.debugState?.() ?? null);
     console.log('③ 出牌后:', JSON.stringify(st2));
+    console.log('   讲解卡:', await dismissLesson() ? '弹了（已点继续）' : '没弹');
   }
 
   // 一路放过直到结算，看层堆起来 + 结算页
-  for (let i = 0; i < 14; i++) {
-    const over = await p.evaluate(() => !document.getElementById('settle').hidden);
-    if (over) break;
+  for (let i = 0; i < 20; i++) {
+    const st = await p.evaluate(() => ({
+      over: !document.getElementById('settle').hidden,
+      lesson: !document.getElementById('lesson').hidden,
+    }));
+    if (st.over) break;
+    if (st.lesson) {
+      await p.click('#lesson-next');
+      await p.waitForTimeout(180);
+      continue;
+    }
     await p.click('#pass-btn');
-    await p.waitForTimeout(1200);
+    await p.waitForTimeout(900);
   }
   await p.waitForTimeout(2000);
   await shot('f-settle.png');

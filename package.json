@@ -19,6 +19,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "cards": "node tools/build-cards.mjs",
+    "verify:risks": "node tools/verify-risks.cjs",
+    "verify:search": "node tools/verify-search.cjs",
     "verify:score": "node tools/verify-score.cjs",
     "verify:preview": "node tools/verify-preview.cjs",
     "verify:flow": "node tools/verify-flow.cjs",

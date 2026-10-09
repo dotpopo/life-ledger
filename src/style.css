@@ -177,8 +177,166 @@ button {
   }
 }
 
-#help-btn {
-  margin-inline-start: auto;
+/* ============ 模式切换 ============
+   两个模式里都常驻右上角。规则按钮挪去了左下角的 #sys，
+   免得跟它抢同一块地方。 */
+#modes {
+  position: fixed;
+  inset-block-start: 11px;
+  inset-inline-end: var(--pad);
+  z-index: 60;
+  display: flex;
+  padding: 3px;
+  background: rgba(13, 15, 19, 0.74);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.mode-btn {
+  padding: 6px 14px;
+  font-size: 12.5px;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    color 0.18s,
+    background 0.18s;
+}
+
+.mode-btn:hover {
+  color: var(--paper);
+}
+
+.mode-btn.is-on {
+  color: #0d0f13;
+  background: var(--paper);
+}
+
+/* 还没选模式的时候，切换器先别出现 */
+body.is-starting #modes {
+  display: none;
+}
+
+/* 入口页和以身入局模式下，游戏那一整套界面都收起来 */
+body.is-starting #hud,
+body.is-starting #res,
+body.is-starting #risk,
+body.is-starting #actions,
+body.is-starting #sys,
+body.is-starting #preview,
+body.is-starting #credit,
+body.mode-lookup #hud,
+body.mode-lookup #res,
+body.mode-lookup #risk,
+body.mode-lookup #actions,
+body.mode-lookup #sys,
+body.mode-lookup #preview,
+body.mode-lookup #credit {
+  display: none;
+}
+
+/* ============ 入口：选模式 ============ */
+#start {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: var(--pad);
+  overflow-y: auto;
+  background: rgba(6, 7, 9, 0.9);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+#start[hidden] {
+  display: none;
+}
+
+.start-inner {
+  inline-size: min(760px, 100%);
+  text-align: center;
+}
+
+.start-title {
+  margin: 0 0 10px;
+  font-size: clamp(30px, 5vw, 42px);
+  font-weight: 500;
+  letter-spacing: 0.1em;
+}
+
+.start-sub {
+  margin: 0 0 30px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.start-modes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  text-align: start;
+}
+
+.start-card {
+  display: grid;
+  gap: 8px;
+  padding: 22px 22px 20px;
+  color: inherit;
+  text-align: start;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    background 0.2s,
+    transform 0.2s;
+}
+
+.start-card:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: var(--line-strong);
+  transform: translateY(-2px);
+}
+
+.start-card:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+.sc-kicker {
+  font: 400 11px/1 var(--mono);
+  letter-spacing: 0.16em;
+  color: var(--faint);
+}
+
+.sc-title {
+  font-size: 25px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+
+.sc-desc {
+  font-size: 13px;
+  line-height: 1.85;
+  color: rgba(233, 228, 215, 0.72);
+}
+
+.sc-cta {
+  margin-block-start: 4px;
+  font-size: 13px;
+  color: var(--amber);
+}
+
+.start-note {
+  margin: 26px 0 0;
+  font-size: 12px;
+  color: var(--faint);
 }
 
 .ghost {
@@ -280,13 +438,15 @@ button {
 /* ============ 正在落下的风险 ============ */
 #risk {
   position: fixed;
-  inset-block-start: 58px;
+  inset-block-start: 52px;
   inset-inline: 0;
   z-index: 9;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 14px;
+  gap: 7px;
+  padding-inline: var(--pad);
+  text-align: center;
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.3s;
@@ -296,6 +456,17 @@ button {
   opacity: 1;
 }
 
+.risk-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/*
+ * 域标签故意做成中性色，不跟任何卡片的颜色呼应。
+ * 以前它用的是该域的颜色，而卡面顶部也刷同一个色，
+ * 于是「颜色对上就是答案」，谁还读内容。
+ */
 .risk-group {
   font-size: 11px;
   letter-spacing: 0.2em;
@@ -303,6 +474,15 @@ button {
   padding: 4px 12px;
   border: 1px solid var(--line);
   border-radius: 999px;
+}
+
+/* 情境。只有标题的话根本看不懂这是个什么问题。 */
+.risk-scene {
+  margin: 0;
+  max-inline-size: 46ch;
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: rgba(233, 228, 215, 0.7);
 }
 
 .risk-title {
@@ -324,10 +504,11 @@ button {
  * 模糊重了就把方块糊没了，那就退化成普通网页面板，虚拟感全没。
  */
 #preview {
-  --pv-tilt: rotateY(5deg) rotateX(2deg);
+  /* 放右侧。左侧是资源列，压在它上面会互相干扰。倾斜方向跟着镜像。 */
+  --pv-tilt: rotateY(-5deg) rotateX(2deg);
   position: fixed;
   inset-block-start: 74px;
-  inset-inline-start: var(--pad);
+  inset-inline-end: var(--pad);
   z-index: 12;
   inline-size: min(352px, 27vw);
   max-block-size: 66vh;
@@ -567,6 +748,373 @@ button {
   z-index: 10;
   display: flex;
   gap: 10px;
+}
+
+/* ============ 系统：规则 / 暂停 / 结束 ============
+   放左下角。抬高一档，给页脚的来源署名让位，两者原来会叠在一起。 */
+#sys {
+  position: fixed;
+  inset-block-end: calc(var(--pad) + 34px);
+  inset-inline-start: var(--pad);
+  z-index: 10;
+  display: flex;
+  gap: 10px;
+}
+
+/* ============ 讲解卡 ============
+   每次决策之后强制读一段原书内容，读完点「继续」才开下一手。
+   这是这个游戏真正「教」的地方，所以做成遮罩，不让它被无视。 */
+#lesson {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: var(--pad);
+  background: rgba(6, 7, 9, 0.62);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+#lesson[hidden] {
+  display: none;
+}
+
+.lesson-inner {
+  inline-size: min(560px, 100%);
+  max-block-size: 84vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 24px 26px;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: rgba(13, 15, 19, 0.97);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+}
+
+.lesson-verdict {
+  margin: 0 0 16px;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.lesson-verdict.is-ok {
+  color: #7ba076;
+}
+
+.lesson-verdict.is-bad {
+  color: var(--danger);
+}
+
+.lesson-risk {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.lesson-risk b {
+  display: block;
+  margin-block-end: 4px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.lesson-risk span {
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+.lesson-kicker {
+  margin: 0 0 8px;
+  font: 400 11.5px/1 var(--mono);
+  letter-spacing: 0.12em;
+  color: var(--faint);
+}
+
+.lesson-title {
+  margin: 0 0 12px;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.lesson-row {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.lesson-row .lesson-k {
+  display: inline-block;
+  inline-size: 4.6em;
+  color: var(--faint);
+}
+
+.lesson-row .lesson-v {
+  color: rgba(233, 228, 215, 0.86);
+}
+
+.lesson-row .lesson-v.is-bad {
+  color: rgba(194, 65, 63, 0.9);
+}
+
+.lesson-hr {
+  margin: 18px 0;
+  border: 0;
+  border-block-start: 1px solid var(--line);
+}
+
+.lesson-src {
+  margin: 14px 0 0;
+  padding-block-start: 12px;
+  border-block-start: 1px solid var(--line);
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--faint);
+  word-break: break-word;
+  white-space: pre-line;
+}
+
+/* 吸底。讲解内容经常超过一屏，按钮要是被顶到折叠线以下，
+   玩家得先滚到底才找得到「继续」。 */
+#lesson-next {
+  position: sticky;
+  inset-block-end: 0;
+  inline-size: 100%;
+  margin-block-start: 22px;
+}
+
+.lesson-quit {
+  inline-size: 100%;
+  margin-block-start: 10px;
+}
+
+/* ============ 暂停遮罩 ============ */
+#paused {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  background: rgba(6, 7, 9, 0.74);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+#paused[hidden] {
+  display: none;
+}
+
+.paused-inner {
+  text-align: center;
+}
+
+.paused-title {
+  margin: 0 0 10px;
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+}
+
+.paused-note {
+  margin: 0 0 24px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ============ 查账 ============
+   不打游戏、直接查建议的人走这里。整屏面板，因为它是「读」的场景，
+   不是「玩」的场景。 */
+#lookup {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: start center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: clamp(16px, 4vh, 52px) var(--pad) 48px;
+  background: rgba(6, 7, 9, 0.93);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+#lookup[hidden] {
+  display: none;
+}
+
+.lookup-inner {
+  inline-size: min(760px, 100%);
+}
+
+.lk-head {
+  position: relative;
+  margin-block-end: 20px;
+}
+
+.lk-title {
+  margin: 0 0 7px;
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+
+.lk-sub {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.lk-close {
+  position: absolute;
+  inset-block-start: -2px;
+  inset-inline-end: 0;
+  inline-size: 34px;
+  block-size: 34px;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.lk-close:hover {
+  color: var(--paper);
+  border-color: var(--line-strong);
+}
+
+.lk-form {
+  display: flex;
+  gap: 10px;
+}
+
+#lk-input {
+  flex: 1;
+  padding: 13px 16px;
+  font-size: 15px;
+  color: var(--paper);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+}
+
+#lk-input:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 1px;
+}
+
+#lk-input::placeholder {
+  color: var(--faint);
+}
+
+#lk-go {
+  padding-inline: 26px;
+}
+
+.lk-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block-start: 12px;
+}
+
+.lk-ex {
+  padding: 5px 11px;
+  font-size: 12px;
+  color: var(--muted);
+  background: none;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.lk-ex:hover {
+  color: var(--paper);
+  border-color: var(--line-strong);
+}
+
+.lk-status {
+  min-block-size: 1.8em;
+  margin: 18px 0 12px;
+  font: 400 12px/1.7 var(--mono);
+  color: var(--faint);
+}
+
+.lk-results {
+  display: grid;
+  gap: 12px;
+}
+
+.lk-hit {
+  padding: 15px 17px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+/* Jev 明确说「直接回答了」的，边框点亮 */
+.lk-hit.is-direct {
+  background: rgba(240, 200, 105, 0.06);
+  border-color: rgba(240, 200, 105, 0.45);
+}
+
+/* 命中的风险：它不是一个答案，是「你可能遇到的是这件事」 */
+.lk-hit.is-risk {
+  background: rgba(194, 65, 63, 0.07);
+  border-color: rgba(194, 65, 63, 0.5);
+}
+
+.lk-badge {
+  display: inline-block;
+  margin-block-end: 9px;
+  padding: 2px 9px;
+  font: 400 11px/1.6 var(--mono);
+  color: var(--faint);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.lk-badge.is-direct {
+  color: #0d0f13;
+  background: var(--amber);
+  border-color: transparent;
+}
+
+.lk-badge.is-risk {
+  color: #faf7ef;
+  background: rgba(194, 65, 63, 0.85);
+  border-color: transparent;
+}
+
+.lk-hit-title {
+  margin: 0 0 9px;
+  font-size: 16.5px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.lk-hit-body {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.85;
+  color: rgba(233, 228, 215, 0.82);
+}
+
+.lk-hit-meta {
+  margin: 0;
+  font: 400 11.5px/1.8 var(--mono);
+  color: var(--faint);
+  word-break: break-word;
+}
+
+.lk-empty {
+  padding: 28px 0;
+  font-size: 14px;
+  color: var(--muted);
+  text-align: center;
 }
 
 /* ============ 提示 ============ */
@@ -826,8 +1374,8 @@ kbd {
   }
 
   #risk {
-    inset-block-start: 96px;
-    gap: 10px;
+    inset-block-start: 92px;
+    gap: 6px;
   }
 
   .risk-title {
@@ -838,16 +1386,25 @@ kbd {
     display: none;
   }
 
+  /* 窄屏宽度不够，情境最多两行，不然会把预览挤下去 */
+  .risk-scene {
+    font-size: 12.5px;
+    max-inline-size: 100%;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
   /* 预览 HUD 放顶部，避开底部的手牌。
-     它只盖到井的中段，而方块下落是持续动作，透过 HUD 仍然看得见。 */
+     起始位置要躲开变高了的风险条（92 + 标题行 + 两行情境 ≈ 170）。 */
   #preview {
-    /* 窄屏改成向前倾，像抬头看一块悬在面前的板 */
     --pv-tilt: rotateX(-5deg);
-    inset-block-start: 128px;
+    inset-block-start: 178px;
     inset-block-end: auto;
     inset-inline: var(--pad);
     inline-size: auto;
-    max-block-size: 46vh;
+    max-block-size: 40vh;
   }
 
   .pv-title {

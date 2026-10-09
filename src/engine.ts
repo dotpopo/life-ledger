@@ -1,6 +1,6 @@
 import type { CardRecord, Corpus } from './types.js';
 import { RISKS, type Risk } from './data/risks.js';
-import { COST_POINT, TIME_POINT, WILL_POINT, gradeOf, type GroupKey } from './data/groups.js';
+import { COST_POINT, TIME_POINT, WILL_POINT, gradeOf } from './data/groups.js';
 
 export interface Resources {
   money: number;
@@ -25,8 +25,28 @@ export interface MissInfo {
   risk: Risk;
   card: CardRecord;
   index: number;
-  /** group = 域选错了；cost = 域对了但付不起 */
-  reason: 'group' | 'cost';
+  /** wrong = 这条讲的不是这件事；cost = 讲对了但你出不起 */
+  reason: 'wrong' | 'cost';
+}
+
+/**
+ * 这一手的讲解。每次结算都会给一份，UI 拿它弹讲解卡。
+ * 游戏的「教学」全在这里：不管你选对还是选错，都要看到原书那条建议的完整内容。
+ */
+export interface Lesson {
+  /** 有没有接住 */
+  ok: boolean;
+  /** 玩家出的那张。放过和自然落地时是 null */
+  picked: CardRecord | null;
+  /** 原书明确指向的那一条（也就是正确答案） */
+  answer: CardRecord;
+  /** 没接住的原因。wrong / cost，放过和超时是 null */
+  reason: 'wrong' | 'cost' | null;
+  /** 这一手是怎么结束的 */
+  by: 'card' | 'pass' | 'land';
+  risk: Risk;
+  /** 接住了才有加分明细 */
+  score: ScoreBreakdown | null;
 }
 
 export interface Summary {
@@ -42,7 +62,7 @@ export interface Summary {
 }
 
 export interface EngineEvents {
-  onHand: (cards: CardRecord[], matchIndex: number) => void;
+  onHand: (cards: CardRecord[], answerIndex: number) => void;
   onRisk: (risk: Risk, fallMs: number, token: number) => void;
   /**
    * 风险被解决。
@@ -53,8 +73,10 @@ export interface EngineEvents {
   onResolved: (risk: Risk, by: 'card' | 'pass' | 'land') => void;
   /** 这一手的岁数是怎么加出来的 */
   onScore: (s: ScoreBreakdown) => void;
-  /** 一锤定音点错了：这一手直接结束 */
+  /** 一锤定音点错了：这一手直接结束（先让方块砸下去） */
   onMiss: (m: MissInfo) => void;
+  /** 这一手结算完了，把原书那条建议讲给玩家听 */
+  onLesson: (l: Lesson) => void;
   onResources: (res: Resources) => void;
   onStats: (s: { turn: number; age: number; cleared: number; landed: number }) => void;
   onGameOver: (s: Summary) => void;
@@ -94,11 +116,12 @@ const REGEN: Resources = { money: 2, time: 2, will: 1 };
 
 /**
  * 下落时长：越往后越快。
- * 原来是 6s → 3.2s，实测太快：选项还没读完方块就落地了，
- * 玩家只能盲点。整体放慢一倍（时长 ×2，等于速度减半）：12s → 6.4s。
+ * 最早是 6s → 3.2s，实测根本来不及读完三张卡；先放慢到 12s → 6.4s，
+ * 还是偏快，再放慢一倍到 24s → 12.8s。
+ * 这游戏的难点应该在「读懂哪条建议真的管用」，不该是手速。
  */
-const FALL_MS_START = 12000;
-const FALL_MS_END = 6400;
+const FALL_MS_START = 24000;
+const FALL_MS_END = 12800;
 
 const GRADE_RANK: Record<string, number> = { A: 0, B: 1, C: 2 };
 
@@ -150,6 +173,13 @@ export class Engine {
   private current: Risk | null = null;
   private token = 0;
   private over = false;
+  /** 选错的那张牌，等信息带到方块落地之后一起讲 */
+  private pendingMiss: { card: CardRecord; index: number; reason: 'wrong' | 'cost' } | null = null;
+  /**
+   * 这一手已经结算完，但还没开下一手。
+   * 讲解卡没关之前一直停在这里，否则玩家根本没机会读那几百字。
+   */
+  private pendingNext = false;
 
   constructor(corpus: Corpus, ev: EngineEvents) {
     this.corpus = corpus;
@@ -169,6 +199,8 @@ export class Engine {
       age: this.age,
       combo: this.combo,
       over: this.over,
+      /** 讲解卡开着的时候为 true，此时不接受出牌 */
+      holding: this.pendingNext,
     };
   }
 
@@ -181,13 +213,20 @@ export class Engine {
     );
   }
 
-  /** 手牌里能对上下落风险的、且付得起的卡的下标 */
+  /** 手牌里真正能接住这个风险的卡的下标 */
   playableIndexes(): number[] {
     if (!this.current) return [];
     return this.hand
       .map((c, i) => ({ c, i }))
-      .filter(({ c }) => c.group === this.current!.group && this.canAfford(c))
+      .filter(({ c }) => this.current!.keys.includes(c.id) && this.canAfford(c))
       .map(({ i }) => i);
+  }
+
+  /** 这个风险的原书答案。优先用手上那张，手上没有就从语料里取。 */
+  answerFor(risk: Risk): CardRecord {
+    const inHand = this.hand.find((c) => risk.keys.includes(c.id));
+    if (inHand) return inHand;
+    return this.resolveKeys(risk)[0]!;
   }
 
   /* ---------- 开局 ---------- */
@@ -200,6 +239,12 @@ export class Engine {
     this.combo = 0;
     this.bestCombo = 0;
     this.over = false;
+    this.current = null;
+    // token 也要清。它是「这一手还算不算数」的凭据，
+    // 上一局留下的回调如果碰上同一个 token，会往新的一局里塞数据。
+    this.token += 1;
+    this.pendingMiss = null;
+    this.pendingNext = false;
     this.riskQueue = shuffle([...RISKS]);
     this.emitResources();
     this.emitStats();
@@ -212,9 +257,9 @@ export class Engine {
     this.emitStats();
 
     this.current = this.drawRisk();
-    this.hand = this.drawHand(this.current.group);
-    const matchIndex = this.hand.findIndex((c) => c.group === this.current!.group);
-    this.ev.onHand(this.hand, matchIndex);
+    this.hand = this.drawHand(this.current);
+    const answerIndex = this.hand.findIndex((c) => this.current!.keys.includes(c.id));
+    this.ev.onHand(this.hand, answerIndex);
 
     // 下落越来越快，按总手数归一，最后几手最紧张
     const span = FALL_MS_END - FALL_MS_START;
@@ -228,29 +273,37 @@ export class Engine {
   }
 
   /**
-   * 发牌。保证至少有一张「域对得上、而且付得起」的卡。
-   * 只保证「域对」不够：一锤定音之后，如果唯一那张域对的牌恰好付不起，
-   * 玩家无论怎么点都必输一层，那不叫选择，叫坑。
-   * 只有在资源真的见底、牌库里找不到付得起的同域卡时，才退而求其次。
+   * 发牌。三条规矩：
+   * 1. 手上**一定有一张原书明确指向的那一条**。不保证答案在手，玩家就只能靠运气。
+   * 2. 优先挑付得起的答案，否则会出现「答案在手上但永远出不起」的死局。
+   * 3. 另外两张从**别的域**抽。跨域干扰项才能逼出「读懂再选」，
+   *    同域干扰项会让玩家退回去猜分类。
    */
-  private drawHand(group: GroupKey): CardRecord[] {
-    const hand = sample(this.corpus.cards, HAND_SIZE);
-    const good = (c: CardRecord) => c.group === group && this.canAfford(c);
-    if (hand.some(good)) return hand;
+  private drawHand(risk: Risk): CardRecord[] {
+    const answers = risk.keys
+      .map((id) => this.byId.get(id))
+      .filter((c): c is CardRecord => !!c);
+    if (!answers.length) return sample(this.corpus.cards, HAND_SIZE);
 
-    const affordable = this.corpus.cards.filter(good);
-    const sameGroup = this.corpus.cards.filter((c) => c.group === group);
-    const pool = affordable.length ? affordable : sameGroup;
-    if (!pool.length) return hand;
+    const affordable = answers.filter((c) => this.canAfford(c));
+    const pool = affordable.length ? affordable : answers;
+    const answer = pool[Math.floor(Math.random() * pool.length)];
 
-    const pick = pool[Math.floor(Math.random() * pool.length)];
-    hand[Math.floor(Math.random() * hand.length)] = pick;
-    return hand;
+    /*
+     * 干扰项：从别的域抽，而且**排除掉所有 key**。
+     * 排除 key 是必须的：有些风险的答案卡本身就在别的域
+     * （比如「熬夜熬到想不开」的答案有一条在精力章），
+     * 不排除的话手上会出现两张都算对的牌，玩家就没法判断了。
+     */
+    const keySet = new Set(risk.keys);
+    const others = this.corpus.cards.filter((c) => !keySet.has(c.id) && c.group !== risk.group);
+    const picks = sample(others, HAND_SIZE - 1);
+    return shuffle([answer, ...picks]);
   }
 
   /**
    * 风险落进井里：连击断掉，只拿「活着」的分，然后进下一手。
-   * 「自然没来得及出牌」和「主动放过」都走这里。
+   * 「自然没来得及出牌」「主动放过」「选错后砸下来」都走这里。
    */
   private bankLanded(risk: Risk, by: 'pass' | 'land') {
     this.landed.push(risk);
@@ -269,6 +322,18 @@ export class Engine {
     // 通知场景把落下来的方块固化成一层的网格，
     // 否则它只是停在半空，下一块会落在同一个高度，看起来像被覆盖
     this.ev.onResolved(risk, by);
+
+    const miss = this.pendingMiss;
+    this.pendingMiss = null;
+    this.ev.onLesson({
+      ok: false,
+      picked: miss ? miss.card : null,
+      answer: this.answerFor(risk),
+      reason: miss ? miss.reason : null,
+      by: miss ? 'land' : by,
+      risk,
+      score: null,
+    });
     this.emitStats();
 
     if (this.landed.length >= MAX_LAYERS) {
@@ -289,25 +354,26 @@ export class Engine {
   /**
    * 出牌。一锤定音：点哪张就是哪张，没有第二次机会。
    *
-   * 域不对、或者域对但付不起，都算选错 —— 这一手直接结束，
-   * 方块砸下去堆一层，进下一手。资源不扣，因为你根本没出成这张牌。
-   * 唯一例外是「牌不存在」这种程序性情况，直接忽略。
+   * 判定用的是**原书明确指向的那几条**（`risk.keys`），不是「同域就行」。
+   * 同域判定会让「每天补维生素」这种卡接住「高血压」，那就学不到东西了。
+   * 域不对、或者付不起，都算选错：这一手直接结束，方块砸下去堆一层。
    *
-   * fallProgress 是出手瞬间方块落到哪了（0~1），由场景提供，
-   * 用来算「从容」加成。引擎不自己读时钟：无头环境帧率低的时候
-   * 场景的动画时间会被钳制，两边会算出不一样的进度。
+   * fallProgress 是出手瞬间方块落到哪了（0~1），由场景提供，用来算「从容」加成。
+   * 引擎不自己读时钟：无头环境帧率低时场景的动画会被钳制，两边会算出不一样的进度。
    */
   playCard(index: number, fallProgress = 0) {
-    if (this.over || !this.current) return;
+    if (this.over || !this.current || this.pendingNext) return;
     const card = this.hand[index];
     if (!card) return;
     const risk = this.current;
 
-    if (card.group !== risk.group) {
-      this.ev.onMiss({ risk, card, index, reason: 'group' });
+    if (!risk.keys.includes(card.id)) {
+      this.pendingMiss = { card, index, reason: 'wrong' };
+      this.ev.onMiss({ risk, card, index, reason: 'wrong' });
       return;
     }
     if (!this.canAfford(card)) {
+      this.pendingMiss = { card, index, reason: 'cost' };
       this.ev.onMiss({ risk, card, index, reason: 'cost' });
       return;
     }
@@ -339,14 +405,37 @@ export class Engine {
 
     this.ev.onScore(b);
     this.ev.onResolved(risk, 'card');
+    this.ev.onLesson({
+      ok: true,
+      picked: card,
+      answer: card,
+      reason: null,
+      by: 'card',
+      risk,
+      score: b,
+    });
     this.advance();
   }
 
   /** 主动放过：有时候省下毅力比清掉这一层更值 */
   passRisk() {
-    if (this.over || !this.current) return;
+    if (this.over || !this.current || this.pendingNext) return;
     this.token += 1;
     this.bankLanded(this.current, 'pass');
+  }
+
+  /** 讲解看完了，开下一手 */
+  resumeTurn() {
+    if (this.over || !this.pendingNext) return;
+    this.pendingNext = false;
+    this.nextTurn();
+  }
+
+  /** 玩家自己按了结束 */
+  quit() {
+    if (this.over) return;
+    this.token += 1;
+    this.finish(false, this.current, '你按下了结束');
   }
 
   private advance() {
@@ -360,12 +449,15 @@ export class Engine {
       this.finish(true, null);
       return;
     }
-    this.nextTurn();
+    // 停在这里等讲解卡关掉。不 hold 的话下一块方块已经在掉了，
+    // 玩家还在读上一手的讲解，两头都顾不上。
+    this.pendingNext = true;
   }
 
   /* ---------- 结算 ---------- */
-  private finish(won: boolean, cause: Risk | null) {
+  private finish(won: boolean, cause: Risk | null, causeText?: string) {
     this.over = true;
+    this.pendingNext = false;
     // 最后一手打完就直接进结算了，advance() 里那次 emitStats 不会发生，
     // 不补这一下 HUD 上的净值会停在上一手，和结算页差一个加分量
     this.emitStats();
@@ -389,7 +481,7 @@ export class Engine {
     this.ev.onGameOver({
       won,
       age: this.age,
-      cause: won ? `活满 ${TOTAL_TURNS} 手` : (last?.title ?? '意外'),
+      cause: causeText ?? (won ? `活满 ${TOTAL_TURNS} 手` : (last?.title ?? '意外')),
       scene: won
         ? `井没有满。${TOTAL_TURNS} 手走完，这辈子算圆满。`
         : (last?.scene ?? ''),

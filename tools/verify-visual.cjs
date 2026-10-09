@@ -45,6 +45,8 @@ const ARGS = [
 
   await p.goto('http://localhost:3100/', { waitUntil: 'domcontentloaded', timeout: 40000 });
   await p.waitForTimeout(4000);
+  await p.click('#start .start-card[data-mode="game"]');
+  await p.waitForTimeout(400);
   await p.click('#help-close');
   await p.waitForTimeout(2200);
 

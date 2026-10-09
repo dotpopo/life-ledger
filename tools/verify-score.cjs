@@ -1,13 +1,15 @@
 /*
- * 计分与「一锤定音」的验证。
+ * 计分 / 判定 / 讲解 / 暂停 / 结束 的验证。
  *
- * 断言的是「规则」本身，不是「某次随机跑出来的数」：
- *   1. 理论满分 = 1008（起始 88 + 19 手 × 40 + 连击 160）
- *   2. 每手加分的构成对得上：活过 8 + 打掉 16 + 等级 + 从容 + 连击
- *   3. 连击按 +2 递增、封顶 +10，漏一次归零
- *   4. 一锤定音：域错或付不起都算选错，方块落地堆一层、只拿 +8
- *   5. 发牌保证至少一张「域对且付得起」
- *   6. 19 手走完就通关，最终净值 = 88 + 各手之和
+ * 断言的是「规则」本身，不是某次随机跑出来的数：
+ *   1. 理论满分 = 1008
+ *   2. 手上一定有一张原书指向的答案卡，另外两张来自别的域
+ *   3. 判定按 risk.keys，不是「同域就行」
+ *   4. 每手加分构成对得上；连击 +2 递增、封顶 +10、漏一次归零
+ *   5. 一锤定音：选错或付不起都算这一手没了，方块砸下去堆一层
+ *   6. 讲解卡会 hold 住回合，读完点继续才开下一手
+ *   7. 暂停真的冻住下落
+ *   8. 结束按钮能主动收局
  */
 const { chromium } = require('playwright-core');
 const path = require('path');
@@ -43,6 +45,24 @@ const check = (name, ok, detail = '') => {
 };
 
 const read = (p) => p.evaluate(() => window.__game.state());
+/** 讲解卡开着的时候把它关掉，等价于玩家点「继续」 */
+const dismissLesson = async (p) => {
+  const open = await p.evaluate(() => !document.getElementById('lesson').hidden);
+  if (open) {
+    await p.click('#lesson-next');
+    await p.waitForTimeout(120);
+  }
+  return open;
+};
+/**
+ * 重开一局。走真实的「再来一局」按钮，因为它同时会清场景、收讲解卡、收暂停。
+ * 直接 engine.start() 会把这些状态留在场上，测试就测不出真实行为了。
+ */
+const freshGame = async (p) => {
+  await p.evaluate(() => document.getElementById('again-btn').click());
+  await p.waitForTimeout(400);
+  await dismissLesson(p);
+};
 
 (async () => {
   const b = await chromium.launch({ executablePath: EXE, args: ARGS });
@@ -54,6 +74,8 @@ const read = (p) => p.evaluate(() => window.__game.state());
     if (await p.evaluate(() => !document.getElementById('boot'))) break;
     await p.waitForTimeout(400);
   }
+  await p.click('#start .start-card[data-mode="game"]');
+  await p.waitForTimeout(400);
   await p.click('#help-close');
   await p.waitForTimeout(600);
 
@@ -62,172 +84,222 @@ const read = (p) => p.evaluate(() => window.__game.state());
   console.log('① 理论满分:', perfect);
   check('理论满分 = 1008', perfect === 1008, String(perfect));
 
-  /* ---------- ② 单手动牌：公式对得上 ---------- */
-  const one = await p.evaluate(() => {
-    const g = window.__game;
-    const st = g.state();
-    const idx = g.engine.playableIndexes()[0];
-    const card = st.hand[idx];
-    const before = st.age;
-    g.play(idx, 0); // 进度 0 = 最从容
-    const after = g.state().age;
-    return { idx, grade: card.grade, delta: after - before, combo: g.state().combo, turn: g.state().turn };
-  });
-  const expectOne = 8 + 16 + GRADE_BONUS[gradeOf(one.grade)] + calmBonus(0) + comboBonus(1);
-  console.log('② 第一手:', JSON.stringify(one), '期望 delta =', expectOne);
-  check('第一手加分 = 8+16+等级+从容+连击', one.delta === expectOne, `${one.delta} vs ${expectOne}`);
-  check('连击从 1 开始', one.combo === 1, String(one.combo));
-
-  /* ---------- ③ 连击递增 ---------- */
-  const comboSeq = await p.evaluate(() => {
-    const g = window.__game;
-    const out = [];
-    for (let i = 0; i < 4; i++) {
-      const idx = g.engine.playableIndexes()[0];
-      const grade = g.state().hand[idx].grade;
-      const before = g.state().age;
-      g.play(idx, 0);
-      const st = g.state();
-      out.push({ delta: st.age - before, combo: st.combo, grade });
-    }
-    return out;
-  });
-  console.log('③ 连击序列:', JSON.stringify(comboSeq));
-  const comboOk = comboSeq.every(
-    (r) => r.delta === 8 + 16 + GRADE_BONUS[gradeOf(r.grade)] + 8 + comboBonus(r.combo)
-  );
-  check('连击 2/3/4/5 手的加成按 +2 递增', comboOk, comboSeq.map((r) => `×${r.combo}:+${r.delta}`).join(' '));
-
-  /* ---------- ④ 一锤定音：点错就砸 ---------- */
-  const miss = await p.evaluate(() => {
-    const g = window.__game;
-    const st = g.state();
-    const riskGroup = st.risk.group;
-    // 故意挑一张域不对的
-    const wrong = st.hand.findIndex((c) => c.group !== riskGroup);
-    if (wrong < 0) return { skipped: true };
-    const before = {
-      age: st.age,
-      landed: st.landed.length,
-      combo: st.combo,
-      money: st.resources.money,
-      time: st.resources.time,
-      will: st.resources.will,
-    };
-    g.play(wrong, 0);
-    return { wrong, riskGroup, wrongGroup: st.hand[wrong].group, before, token: g.state().turn };
-  });
-  if (miss.skipped) {
-    console.log('④ 这一手三张都同域，跳过');
-  } else {
-    // 等方块砸下去（slamRisk 0.28s 仿真时间，软渲染下会慢一些）
-    for (let i = 0; i < 40; i++) {
-      const st = await read(p);
-      if (st.landed.length > miss.before.landed) break;
-      await p.waitForTimeout(250);
-    }
-    const after = await read(p);
-    console.log('④ 点错:', JSON.stringify(miss.wrongGroup), '≠', miss.riskGroup, '→', JSON.stringify({
-      age: after.age, landed: after.landed.length, combo: after.combo,
-    }));
-    check('点错后井多一层', after.landed.length === miss.before.landed + 1, `${miss.before.landed} → ${after.landed.length}`);
-    check('点错后连击归零', after.combo === 0, String(after.combo));
-    check('点错只拿「活过」的 +8', after.age - miss.before.age === 8, `${after.age - miss.before.age}`);
-    // 注意：这一手结束后会进下一手，而下一手开头有资源回复（钱时间 +2、毅力 +1）。
-    // 所以断言是「三种资源都不减」，不是「完全不变」。
-    const r = after.resources;
-    check(
-      '点错不扣资源（三种资源都不减，只走每手回复）',
-      r.money >= miss.before.money && r.time >= miss.before.time && r.will >= miss.before.will,
-      `钱 ${miss.before.money}→${r.money} 时间 ${miss.before.time}→${r.time} 毅力 ${miss.before.will}→${r.will}`
-    );
-  }
-
-  /* ---------- ⑤ 付不起也算选错 ---------- */
-  /*
-   * 不能靠「手牌里碰巧有一张付不起的同域卡」——发牌保证了至少有一张
-   * 「域对且付得起」，而且资源在一手之内不会变，所以那种牌本来就不该出现。
-   * 能出现的情况是：手上有两张同域，玩家挑了贵的那张。
-   * 这里直接把这个局面造出来。
-   */
-  const broke = await p.evaluate(() => {
-    const g = window.__game;
-    const eng = g.engine;
-    const st = g.state();
-    const card = eng.corpus.cards.find((c) => c.group === st.risk.group && c.tags.will === '是');
-    if (!card) return { skipped: true };
-    eng.hand[0] = card; // state 里返回的是同一个数组引用
-    eng.resources.will = 0; // 要 3 点毅力，现在一点都没有
-    const before = { landed: st.landed.length, age: st.age };
-    g.play(0, 0);
-    return { before, group: card.group, riskGroup: st.risk.group };
-  });
-  if (broke.skipped) {
-    console.log('⑤ 语料里找不到要 3 点毅力的同域卡，跳过');
-  } else {
-    const toastText = await p.evaluate(() => document.getElementById('toast').textContent);
-    console.log('⑤ 域对但付不起:', broke.group, '==', broke.riskGroup, '→ 提示:', JSON.stringify(toastText));
-    check('付不起的提示是「付不起」', toastText.includes('付不起'), toastText);
-    for (let i = 0; i < 40; i++) {
-      const st = await read(p);
-      if (st.landed.length > broke.before.landed) break;
-      await p.waitForTimeout(250);
-    }
-    const after = await read(p);
-    check('付不起也算选错（井多一层）', after.landed.length === broke.before.landed + 1, `${broke.before.landed} → ${after.landed.length}`);
-    check('付不起也只拿「活过」的 +8', after.age - broke.before.age === 8, `${after.age - broke.before.age}`);
-  }
-
-  /* ---------- ⑥ 发牌保证：每一手都有「域对且付得起」 ---------- */
-  await p.evaluate(() => window.__game.engine.start());
-  await p.waitForTimeout(300);
+  /* ---------- ② 发牌：手上一定有答案卡，干扰项跨域 ---------- */
   const deal = await p.evaluate(() => {
     const g = window.__game;
     const bad = [];
-    for (let i = 0; i < 60; i++) {
+    const steps = [];
+    const riskIds = [];
+    for (let n = 0; n < 40; n++) {
       const st = g.state();
       if (st.over || !st.risk) break;
-      const ok = g.engine.playableIndexes().length;
-      if (ok < 1) bad.push({ turn: st.turn, risk: st.risk.group, res: st.resources });
+      const keys = st.risk.keys;
+      const answers = st.hand.filter((c) => keys.includes(c.id));
+      const others = st.hand.filter((c) => !keys.includes(c.id));
+      if (answers.length !== 1) bad.push(`第${st.turn}手答案数=${answers.length}`);
+      if (others.some((c) => c.group === st.risk.group)) {
+        bad.push(`第${st.turn}手干扰项跟风险同域`);
+      }
+      riskIds.push(st.risk.id);
       const idx = g.engine.playableIndexes()[0];
       if (idx === undefined) break;
-      g.play(idx, 0);
+      const card = st.hand[idx];
+      const before = st.age;
+      g.play(idx, 0); // 进度 0 = 最从容
+      steps.push({ delta: g.state().age - before, combo: g.state().combo, grade: card.grade });
+      g.engine.resumeTurn();
     }
-    return { bad, over: g.state().over, age: g.state().age, turns: g.state().turn };
+    return { bad, steps, riskIds, over: g.state().over, age: g.state().age };
   });
-  console.log('⑥ 连打到底:', JSON.stringify(deal.bad), '→', JSON.stringify({ over: deal.over, age: deal.age }));
-  check('每一手都至少有一张「域对且付得起」', deal.bad.length === 0, JSON.stringify(deal.bad));
+  console.log('② 连打到底:', JSON.stringify(deal.bad), '→', JSON.stringify({ over: deal.over, age: deal.age }));
+  check('每手都恰好一张答案卡', deal.bad.filter((x) => x.includes('答案数')).length === 0, JSON.stringify(deal.bad));
+  check('干扰项不跟风险同域', deal.bad.filter((x) => x.includes('干扰项')).length === 0, JSON.stringify(deal.bad));
+  // 这一条直接盯住「题库太小」那个抱怨：19 手之内不该出现重复的风险
+  const uniq = new Set(deal.riskIds).size;
+  check(
+    '一局之内风险不重复（题库够大）',
+    uniq === deal.riskIds.length,
+    `${deal.riskIds.length} 手出现 ${uniq} 个不同的风险`
+  );
   check('19 手走完就结束', deal.over === true, `over=${deal.over}`);
   check('最终净值不超过满分', deal.age <= perfect, `${deal.age} ≤ ${perfect}`);
-  check(
-    '最终净值落在合理区间（下限 = 全 C 卡零连击）',
-    deal.age >= 88 + 19 * (8 + 16 + 2 + 8),
-    `${deal.age} ≥ ${88 + 19 * 34}`
+  const composeOk = deal.steps.every(
+    (s) => s.delta === 8 + 16 + GRADE_BONUS[gradeOf(s.grade)] + calmBonus(0) + comboBonus(s.combo)
   );
+  console.log('   每手加分:', deal.steps.map((s) => `×${s.combo}:+${s.delta}`).join(' '));
+  check('每手加分 = 活过+接住+证据+从容+连击', composeOk, `${deal.steps.length} 手`);
+  check('连击一手一手加上去', deal.steps.every((s, i) => s.combo === i + 1), deal.steps.map((s) => s.combo).join(','));
 
-  /* ---------- ⑦ 结算页 ---------- */
-  const settle = await p.evaluate(() => ({
-    visible: !document.getElementById('settle').hidden,
-    kicker: document.getElementById('settle-kicker').textContent,
-    age: document.getElementById('settle-age').textContent,
-    stat: document.getElementById('settle-stat').textContent,
-    perfect: document.getElementById('settle-perfect').textContent,
-  }));
-  console.log('⑦ 结算页:', JSON.stringify(settle));
-  check('结算页显示通关', settle.visible && settle.kicker === '通关', `${settle.visible} / ${settle.kicker}`);
-  check('结算页有满分参照', settle.perfect.includes(String(perfect)), settle.perfect);
-  check('结算页统计里有最长连击', settle.stat.includes('最长连击'), settle.stat);
+  /* ---------- ③ 判定按 keys，不是同域 ---------- */
+  await freshGame(p);
+  const byKeys = await p.evaluate(() => {
+    const g = window.__game;
+    const st = g.state();
+    // 找一张同域但不在 keys 里的卡（语料里一定存在，比如「每天补维生素」对「车祸」）
+    const sameGroupWrong = g.engine.corpus.cards.find(
+      (c) => c.group === st.risk.group && !st.risk.keys.includes(c.id)
+    );
+    if (!sameGroupWrong) return { skipped: true };
+    g.engine.hand[0] = sameGroupWrong;
+    const before = { landed: st.landed.length, age: st.age };
+    g.play(0, 0);
+    return {
+      before,
+      title: sameGroupWrong.title.slice(0, 18),
+      group: sameGroupWrong.group,
+      riskGroup: st.risk.group,
+    };
+  });
+  if (byKeys.skipped) {
+    console.log('③ 语料里找不到同域但不对的卡，跳过');
+  } else {
+    console.log('③ 同域但不对的卡:', JSON.stringify(byKeys.title), `（${byKeys.group}）`);
+    // 方块要砸下去才堆层，所以层数得等落地之后再读
+    for (let i = 0; i < 40; i++) {
+      if (await p.evaluate(() => !document.getElementById('lesson').hidden)) break;
+      await p.waitForTimeout(250);
+    }
+    const landed = await read(p);
+    check(
+      '同域但不在 keys 里也算选错',
+      landed.landed.length === byKeys.before.landed + 1,
+      `井 ${byKeys.before.landed} → ${landed.landed.length}`
+    );
+    check('选错只拿「活过」的 +8', landed.age - byKeys.before.age === 8, `${landed.age - byKeys.before.age}`);
+    const lesson = await p.evaluate(() => ({
+      open: !document.getElementById('lesson').hidden,
+      verdict: document.getElementById('lesson-verdict').textContent,
+      body: document.getElementById('lesson-body').textContent.slice(0, 200),
+      holding: window.__game.state().holding,
+    }));
+    console.log('④ 讲解卡:', JSON.stringify(lesson.verdict), '| holding =', lesson.holding);
+    check('选错后弹讲解卡', lesson.open === true, String(lesson.open));
+    check('讲解卡说没接住', lesson.verdict.includes('没接住'), lesson.verdict);
+    check('讲解卡里有正确答案的正文', lesson.body.length > 40, `正文 ${lesson.body.length} 字`);
+    check('讲解期间引擎 hold 住', lesson.holding === true, String(lesson.holding));
 
-  /* ---------- ⑧ HUD ---------- */
+    // hold 期间出牌应该无效
+    const duringHold = await p.evaluate(() => {
+      const g = window.__game;
+      const before = g.state().age;
+      const idx = g.engine.playableIndexes()[0];
+      if (idx !== undefined) g.play(idx, 0);
+      return { before, after: g.state().age, turn: g.state().turn };
+    });
+    check('讲解期间出牌无效', duringHold.before === duringHold.after, `${duringHold.before} → ${duringHold.after}`);
+
+    await dismissLesson(p);
+    await p.waitForTimeout(300);
+    const afterResume = await p.evaluate(() => ({ holding: window.__game.state().holding, risk: !!window.__game.state().risk }));
+    check('点继续后开了下一手', afterResume.holding === false && afterResume.risk === true, JSON.stringify(afterResume));
+  }
+
+  /* ---------- ⑤ 付不起：答案卡也在手上，但出不起 ---------- */
+  await freshGame(p);
+  const broke = await p.evaluate(() => {
+    const g = window.__game;
+    const st = g.state();
+    const answer = g.engine.corpus.cards.find(
+      (c) => st.risk.keys.includes(c.id) && (c.tags.will !== '否' || c.tags.money !== '0' || c.tags.time !== '少')
+    );
+    if (!answer) return { skipped: true };
+    g.engine.hand[0] = answer;
+    g.engine.resources.money = 0;
+    g.engine.resources.time = 0;
+    g.engine.resources.will = 0;
+    g.play(0, 0);
+    return { title: answer.title.slice(0, 18) };
+  });
+  if (broke.skipped) {
+    console.log('⑤ 找不到有成本的答案卡，跳过');
+  } else {
+    const toast = await p.evaluate(() => document.getElementById('toast').textContent);
+    for (let i = 0; i < 40; i++) {
+      if (await p.evaluate(() => !document.getElementById('lesson').hidden)) break;
+      await p.waitForTimeout(250);
+    }
+    const lesson = await p.evaluate(() => ({
+      verdict: document.getElementById('lesson-verdict').textContent,
+      body: document.getElementById('lesson-body').textContent,
+    }));
+    console.log('⑤ 付不起:', JSON.stringify(broke.title), '| toast:', JSON.stringify(toast));
+    check('付不起的提示是「出不起」', toast.includes('出不起'), toast);
+    check('付不起的讲解卡标出原因', lesson.body.includes('出不起'), lesson.body.slice(0, 80));
+    await dismissLesson(p);
+  }
+
+  /* ---------- ⑥ 暂停 ---------- */
+  await freshGame(p);
+  const pause = await p.evaluate(async () => {
+    const g = window.__game;
+    const a = g.scene.fallProgress();
+    document.getElementById('pause-btn').click();
+    const pausedNow = g.scene.isPaused;
+    const overlay = !document.getElementById('paused').hidden;
+    await new Promise((r) => setTimeout(r, 1600));
+    const b = g.scene.fallProgress();
+    document.getElementById('resume-btn').click();
+    await new Promise((r) => setTimeout(r, 1600));
+    const c = g.scene.fallProgress();
+    return { a, b, c, pausedNow, overlay, stillPaused: g.scene.isPaused };
+  });
+  console.log('⑥ 暂停前后进度:', JSON.stringify(pause));
+  check('暂停按钮进入暂停态', pause.pausedNow === true && pause.overlay === true, JSON.stringify(pause));
+  check('暂停期间下落进度不动', pause.a === pause.b, `${pause.a} → ${pause.b}`);
+  check('继续之后下落恢复', pause.c > pause.b, `${pause.b} → ${pause.c}`);
+  check('继续之后不再是暂停态', pause.stillPaused === false, String(pause.stillPaused));
+
+  /* ---------- ⑦ 结束 ---------- */
+  const quit = await p.evaluate(() => {
+    const g = window.__game;
+    document.getElementById('quit-btn').click();
+    return {
+      over: g.state().over,
+      cause: document.getElementById('settle-cause').textContent,
+      visible: !document.getElementById('settle').hidden,
+    };
+  });
+  console.log('⑦ 结束:', JSON.stringify(quit));
+  check('结束按钮收局', quit.over === true && quit.visible === true, JSON.stringify(quit));
+  check('死因写明是主动结束', quit.cause.includes('结束'), quit.cause);
+
+  /* ---------- ⑧ 重开清旧数据 ---------- */
+  const restart = await p.evaluate(async () => {
+    const g = window.__game;
+    // 先堆几层出来
+    document.getElementById('settle').hidden = true;
+    g.engine.start();
+    for (let i = 0; i < 3; i++) {
+      if (g.state().over) break;
+      g.engine.passRisk();
+      await new Promise((r) => setTimeout(r, 260));
+      g.engine.resumeTurn();
+    }
+    const before = { layers: g.scene.debugState().layers, age: g.state().age };
+    document.getElementById('again-btn').click();
+    await new Promise((r) => setTimeout(r, 400));
+    return {
+      before,
+      after: { layers: g.scene.debugState().layers, turn: g.state().turn, age: g.state().age },
+      lessonHidden: document.getElementById('lesson').hidden,
+      pausedHidden: document.getElementById('paused').hidden,
+    };
+  });
+  console.log('⑧ 重开:', JSON.stringify(restart));
+  check('重开后井清空', restart.after.layers === 0, `${restart.before.layers} → ${restart.after.layers}`);
+  check('重开后回到第 1 手', restart.after.turn === 1, String(restart.after.turn));
+  check('重开后净值归位', restart.after.age === 88, String(restart.after.age));
+  check('重开后讲解卡和暂停都收掉', restart.lessonHidden && restart.pausedHidden, JSON.stringify(restart));
+
+  /* ---------- ⑨ HUD ---------- */
   const hud = await p.evaluate(() => ({
     age: document.getElementById('hud-age').textContent,
     turn: document.getElementById('hud-turn').textContent,
     turnMax: document.getElementById('hud-turn-max').textContent,
     layerMax: document.getElementById('hud-layer-max').textContent,
   }));
-  console.log('⑧ HUD:', JSON.stringify(hud));
+  console.log('⑨ HUD:', JSON.stringify(hud));
   check('HUD 分母来自常量', hud.turnMax === '/19' && hud.layerMax === '/10', `${hud.turnMax} ${hud.layerMax}`);
-  check('HUD 的净值和结算页一致', hud.age === settle.age, `${hud.age} vs ${settle.age}`);
 
   console.log('页面报错:', errs.length, errs.slice(0, 3).join(' | '));
   if (fails.length || errs.length) {

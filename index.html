@@ -154,8 +154,39 @@
         <span class="hud-k">井</span>
         <b class="hud-v"><span id="hud-layers">0</span><i id="hud-layer-max">/10</i></b>
       </div>
-      <button id="help-btn" class="ghost" type="button">规则</button>
     </header>
+
+    <!-- ===== 模式切换。两个模式里都常驻，右上角 ===== -->
+    <div id="modes" role="tablist" aria-label="切换模式">
+      <button class="mode-btn" type="button" role="tab" data-mode="lookup">以身入局</button>
+      <button class="mode-btn" type="button" role="tab" data-mode="game">游戏人生</button>
+    </div>
+    <!-- ===== 入口：先让用户自己选模式 ===== -->
+    <div id="start" hidden>
+      <div class="start-inner">
+        <h1 class="start-title">人生账本</h1>
+        <p class="start-sub">《高性价比人生指南》672 条，两种用法。选一个开始。</p>
+        <div class="start-modes">
+          <button class="start-card" type="button" data-mode="lookup">
+            <span class="sc-kicker">不打游戏</span>
+            <b class="sc-title">以身入局</b>
+            <span class="sc-desc"
+              >你正遇到一件事。说人话，我从 672 条里翻出真正管用的那条，连成本、证据和出处一起给你。</span
+            >
+            <span class="sc-cta">直接开查</span>
+          </button>
+          <button class="start-card" type="button" data-mode="game">
+            <span class="sc-kicker">玩一局</span>
+            <b class="sc-title">游戏人生</b>
+            <span class="sc-desc"
+              >风险从井口掉下来，你手上三张卡，每个只有一次机会。撑满 19 手，把这一生记成一本好账。</span
+            >
+            <span class="sc-cta">开始游戏</span>
+          </button>
+        </div>
+        <p class="start-note">两种模式随时能切，右上角。</p>
+      </div>
+    </div>
 
     <!-- ===== 三种资源 ===== -->
     <aside id="res" aria-label="资源">
@@ -177,17 +208,20 @@
       <p class="res-note">钱和时间大多不缺，缺的是毅力。</p>
     </aside>
 
-    <!-- ===== 正在落下的风险 ===== -->
+    <!-- ===== 正在落下的风险 =====
+         光有标题看不懂问题，所以必须把原书那句情境也放上来 -->
     <div id="risk" aria-live="polite">
-      <span class="risk-group" id="risk-group">身体</span>
-      <b class="risk-title" id="risk-title">车祸</b>
-      <span class="risk-hint" id="risk-hint">出一张「身体」的卡</span>
+      <div class="risk-head">
+        <span class="risk-group" id="risk-group">身体</span>
+        <b class="risk-title" id="risk-title">车祸</b>
+      </div>
+      <p class="risk-scene" id="risk-scene"></p>
+      <span class="risk-hint" id="risk-hint">读三张卡，挑出真能接住它的那条</span>
     </div>
     <!-- ===== 预览：一层 HUD，不是面板。
          压得极透、只做轻模糊，底下的手牌和正在下落的方块都要能看见 ===== -->
     <aside id="preview" hidden aria-label="卡牌详情">
       <header class="pv-head">
-        <span class="pv-group" id="pv-group">身体</span>
         <span class="pv-id" id="pv-id">01 章 · 1 条</span>
         <span class="pv-pos" id="pv-pos">1/3</span>
         <button id="pv-close" class="pv-close" type="button" aria-label="关闭预览">✕</button>
@@ -209,9 +243,64 @@
       </footer>
     </aside>
 
+    <!-- ===== 以身入局：不打游戏，直接查建议 =====
+         给「只想快速拿到某个答案」的人。检索分两段：本地先出结果，
+         再让 Jev 复核相关性。 -->
+    <div id="lookup" hidden>
+      <div class="lookup-inner">
+        <header class="lk-head">
+          <h2 class="lk-title">以身入局</h2>
+          <p class="lk-sub">你正遇到一件事。说人话就行，我翻这 672 条给你找。</p>
+        </header>
+
+        <form class="lk-form" id="lk-form">
+          <input
+            id="lk-input"
+            type="search"
+            autocomplete="off"
+            placeholder="说人话就行。比如：房东不退我押金"
+            aria-label="你要查什么"
+          />
+          <button id="lk-go" class="primary" type="submit">查</button>
+        </form>
+
+        <div class="lk-examples" id="lk-examples"></div>
+        <p class="lk-status" id="lk-status" aria-live="polite"></p>
+        <div class="lk-results" id="lk-results"></div>
+      </div>
+    </div>
+
     <!-- ===== 操作 ===== -->
     <div id="actions">
       <button id="pass-btn" class="ghost" type="button">放过这一手</button>
+    </div>
+
+    <!-- ===== 系统：规则 / 暂停 / 结束。放左下角，不跟顶栏和右上角的模式切换抢位置 ===== -->
+    <div id="sys">
+      <button id="help-btn" class="ghost" type="button">规则</button>
+      <button id="pause-btn" class="ghost" type="button">暂停</button>
+      <button id="quit-btn" class="ghost" type="button">结束</button>
+    </div>
+
+    <!-- ===== 讲解卡：每次决策之后都要读一段原书内容，读完才开下一手 ===== -->
+    <div id="lesson" hidden>
+      <div class="lesson-inner">
+        <p class="lesson-verdict" id="lesson-verdict"></p>
+        <div class="lesson-body" id="lesson-body"></div>
+        <button id="lesson-next" class="primary" type="button">继续</button>
+        <!-- 讲解卡是遮罩，会把顶栏和左下角的按钮全挡住。
+             这里必须留一个出口，否则玩家不想读了就被关在里面。 -->
+        <button id="lesson-quit" class="ghost lesson-quit" type="button">结束这一局</button>
+      </div>
+    </div>
+
+    <!-- ===== 暂停遮罩 ===== -->
+    <div id="paused" hidden>
+      <div class="paused-inner">
+        <p class="paused-title">已暂停</p>
+        <p class="paused-note">方块停住了，慢慢读那三张卡。</p>
+        <button id="resume-btn" class="primary" type="button">继续</button>
+      </div>
     </div>
 
     <!-- ===== 提示 ===== -->
@@ -244,24 +333,25 @@
       <div class="help-inner">
         <h2>怎么玩</h2>
         <ol>
-          <li>风险从井口落下来。它落地就变成井里的一层，永久留在那儿。</li>
-          <li>你手上三张卡，每张来自原书的一条建议。卡上写着它的「域」和三项成本（钱 / 时间 / 毅力）。</li>
-          <li><b>出一张同域的卡、而且付得起，就能把正在落下的风险打掉。</b></li>
-          <li><b>每个风险只有一次机会。</b>点错了（域不对，或者付不起），方块就直接砸下去堆一层，进下一个风险。</li>
+          <li>井口掉下来一个真实的风险，<b>下面那句是它的情境</b>，先读它。</li>
+          <li>你手上三张卡，每张是原书的一条建议。<b>牌面不标分类</b>，只标成本（钱 / 时间 / 毅力）和证据等级。</li>
+          <li><b>挑出真正能接住这个风险的那一条。</b>三条里只有一条是原书明确指向它的，另外两条讲的是别的事。</li>
+          <li><b>每个风险只有一次机会。</b>点错了，方块直接砸下去堆一层，进下一个风险。</li>
+          <li>不管选对选错，都会弹一张<b>讲解卡</b>，把原书那条建议的「说人话 / 收益 / 证据 / 来源」讲完。
+            读完点「继续」，下一手才开始。</li>
           <li>撑满 <b>19 手</b>、井没堆满 10 层，这辈子就算圆满。</li>
           <li>钱和时间基本不缺，<b>毅力才是真稀缺的</b>。出牌之前先看成本。</li>
-          <li>「放过这一手」不是认输。有些风险你确实接不住，省下毅力比硬撑更值。</li>
         </ol>
         <p class="help-note">
-          <b>净值</b>是你这一生的账。活过一手、打掉一个风险、挡得漂亮，
-          都会一笔一笔记上去。满分 <b id="help-perfect">1008</b>。<br />
-          每一手都会加分：活过 <b>+8</b>，打掉风险 <b>+16</b>，再按证据等级（A +8 / B +5 / C +2）、
+          <b>净值</b>是你这一生的账。活过一手、接住一个风险、接得漂亮，都会一笔一笔记上去。
+          满分 <b id="help-perfect">1008</b>。<br />
+          每一手都会加分：活过 <b>+8</b>，接住风险 <b>+16</b>，再按证据等级（A +8 / B +5 / C +2）、
           出手从容程度（方块还在上半段 +8 / 中段 +4 / 最后关头 +1）、
           连击（每多连一手 +2，封顶 +10）往上叠。漏一次，连击归零。<br />
-          出牌：点卡片，或按 <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>。放过：<kbd>空格</kbd>。<br />
+          出牌：点卡片，或按 <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd>。放过：<kbd>空格</kbd>。
+          暂停：<kbd>P</kbd>。<br />
           看详情：<b>长按卡片</b>（电脑上是把鼠标停在卡片上），进去以后
-          <b>左右滑动</b>或按 <kbd>←</kbd> <kbd>→</kbd> 换牌，<kbd>Esc</kbd> 或点空白处退出。
-          预览是一层透明的 HUD，看字的同时方块还在往下掉。<br />
+          <b>左右滑动</b>或按 <kbd>←</kbd> <kbd>→</kbd> 换牌，<kbd>Esc</kbd> 或点空白处退出。<br />
           内容全部来自《高性价比人生指南》672 条，每条都有成本、收益、证据等级和原始出处。
         </p>
         <button id="help-close" class="primary" type="button">开始</button>

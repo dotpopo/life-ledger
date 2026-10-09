@@ -6,12 +6,22 @@ import {
   PERFECT_AGE,
   TOTAL_TURNS,
   costOf,
+  type Lesson,
   type Resources,
   type ScoreBreakdown,
   type Summary,
 } from './engine.js';
-import type { Corpus } from './types.js';
+import type { CardRecord, Corpus } from './types.js';
 import { GROUPS, GRADE_META, gradeOf } from './data/groups.js';
+import { RISKS } from './data/risks.js';
+import {
+  buildIndex,
+  jevCheck,
+  mergeHits,
+  searchLocal,
+  type Hit,
+  type SearchIndex,
+} from './search.js';
 import { makeShareCard } from './scene/textures.js';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -33,10 +43,10 @@ const resWillV = $('res-will-v');
 const riskEl = $('risk');
 const riskGroup = $('risk-group');
 const riskTitle = $('risk-title');
+const riskScene = $('risk-scene');
 const riskHint = $('risk-hint');
 
 const previewEl = $('preview');
-const pvGroup = $('pv-group');
 const pvId = $('pv-id');
 const pvPos = $('pv-pos');
 const pvDots = $('pv-dots');
@@ -51,6 +61,22 @@ const toastEl = $('toast');
 const settleEl = $('settle');
 const helpEl = $('help');
 const passBtn = $<HTMLButtonElement>('pass-btn');
+
+const lessonEl = $('lesson');
+const lessonVerdict = $('lesson-verdict');
+const lessonBody = $('lesson-body');
+const lessonNext = $<HTMLButtonElement>('lesson-next');
+const pausedEl = $('paused');
+const pauseBtn = $<HTMLButtonElement>('pause-btn');
+const resumeBtn = $<HTMLButtonElement>('resume-btn');
+
+const lookupEl = $('lookup');
+const startEl = $('start');
+const lkForm = $<HTMLFormElement>('lk-form');
+const lkInput = $<HTMLInputElement>('lk-input');
+const lkStatus = $('lk-status');
+const lkResults = $('lk-results');
+const lkExamples = $('lk-examples');
 
 /* ---------- 启动屏 ---------- */
 const bootEl = document.getElementById('boot');
@@ -112,6 +138,22 @@ async function main() {
   setBoot(52, '正在解析语料');
   await new Promise((r) => setTimeout(r, 0));
 
+  // 建检索索引：672 张卡 + 284 个风险。实测 130ms 左右，放启动期做掉
+  setBoot(58, '正在建检索索引');
+  searchIndex = buildIndex(corpus, RISKS);
+  for (const c of corpus.cards) cardById.set(c.id, c);
+  for (const ex of EXAMPLES) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'lk-ex';
+    btn.textContent = ex;
+    btn.addEventListener('click', () => {
+      lkInput.value = ex;
+      void runLookup(ex);
+    });
+    lkExamples.append(btn);
+  }
+
   // 字体就绪后再画贴图，否则 Canvas 上量出来的字宽是错的，排版会歪
   if (document.fonts?.ready) await document.fonts.ready;
 
@@ -129,14 +171,14 @@ async function main() {
       closePreview();
     },
     onRisk: (risk, fallMs, token) => {
+      // 域标签只留文字，不刷该域的颜色。刷了颜色，再让卡面也刷同一个色，
+      // 玩家一眼配对就完了，根本不会去读内容。
       riskGroup.textContent = risk.group;
-      riskGroup.style.color = GROUPS[risk.group].css;
-      riskGroup.style.borderColor = GROUPS[risk.group].css;
       riskTitle.textContent = risk.title;
-      riskHint.textContent = `出一张「${risk.group}」的卡，只有一次机会`;
+      // 情境必须给。只有「车祸」两个字，玩家不知道这是个什么问题。
+      riskScene.textContent = risk.scene;
+      riskHint.textContent = '读三张卡，挑出真能接住它的那条';
       riskEl.classList.add('is-on');
-      // 不再按风险所属的域去压暗其他两张牌：那是「哪个是正确选项」的提前泄题，
-      // 三张牌要保持一样的呈现，让玩家自己读域来判断。
       scene.spawnRisk(risk, fallMs, () => engine.riskLanded(token));
     },
     onResolved: (risk, by) => {
@@ -146,16 +188,12 @@ async function main() {
     },
     /*
      * 一锤定音选错了：这一手直接结束。
-     * 这里只负责「说清为什么错」和「让方块动起来」；
-     * 堆层、判负、进下一手全在方块落地后的 riskLanded 那条路上。
+     * 这里只说一句「为什么」，让方块砸下去；
+     * 完整的讲解等方块落地后由 onLesson 给。
      */
     onMiss: (m) => {
       scene.rejectCard(m.index);
-      toast(
-        m.reason === 'group'
-          ? `对不上，这一手没了。风险是「${m.risk.group}」，你出的是「${m.card.group}」`
-          : '付不起，这一手没了。这张的成本超过了手上的资源'
-      );
+      toast(m.reason === 'wrong' ? '这条讲的不是这件事' : '这张你出不起');
       scene.slamRisk();
     },
     onScore: showScore,
@@ -167,10 +205,13 @@ async function main() {
       hudLayers.textContent = String(s.landed);
       scene.setDanger(s.landed / MAX_LAYERS);
     },
+    onLesson: showLesson,
     onGameOver: (summary) => {
       lastSummary = summary;
       riskEl.classList.remove('is-on');
       closePreview();
+      hideLesson();
+      setPaused(false);
       showSettlement(summary);
     },
   });
@@ -186,7 +227,9 @@ async function main() {
   hudTurn.textContent = String(engine.state.turn);
 
   bindEvents();
-  helpEl.hidden = false;
+  // 先给入口，让用户自己选模式
+  document.body.classList.add('is-starting');
+  startEl.hidden = false;
 
   // 自动化验证用的钩子
   (window as unknown as Record<string, unknown>).__game = {
@@ -202,12 +245,18 @@ async function main() {
     bootDone: () => !document.getElementById('boot'),
     picks: () => ({ count: pickCount, log: [...pickLog] }),
     perfectAge: PERFECT_AGE,
+    /** 风险池。给验证脚本查题库大小、挑最长标题用 */
+    risks: RISKS,
     /** 验证计分公式用：绕过点击直接出牌，进度可控 */
     play: (index: number, progress = 0) => engine.playCard(index, progress),
   };
 
   setBoot(96, '就绪');
   await hideBoot();
+
+  // 支持 ?q=... 直接把查询带进来，这样一次检索可以当链接分享
+  const shared = new URLSearchParams(location.search).get('q');
+  if (shared && shared.trim()) openLookup(shared.trim());
 }
 
 /* ============================================================
@@ -308,9 +357,7 @@ function renderPreview() {
   const grade = gradeOf(card.grade);
   const cost = costOf(card);
 
-  pvGroup.textContent = card.group;
-  pvGroup.style.color = GROUPS[card.group].css;
-  pvGroup.style.borderColor = GROUPS[card.group].css;
+  // 这里不再显示「域」。牌面给分类线索，玩家就会去配对分类，不去读内容。
   pvId.textContent = `${card.chapter} 章 · ${card.num} 条`;
   pvPos.textContent = `${pvIndex + 1}/${hand.length}`;
   pvTitle.textContent = card.title;
@@ -542,16 +589,33 @@ function bindEvents() {
   });
   $('help-close').addEventListener('click', () => {
     helpEl.hidden = true;
-    if (engine.state.over) return;
+    // 上一局已经结束了，这里点「开始」应该直接开新局。
+    // 以前是 return 掉，玩家点完什么都没发生，看着像卡住。
+    if (engine.state.over) {
+      restart();
+      return;
+    }
     if (engine.state.turn === 1 && !engine.state.risk) engine.start();
   });
 
-  $('again-btn').addEventListener('click', () => {
-    settleEl.hidden = true;
-    closePreview();
-    scene.reset();
-    engine.start();
-  });
+  // 暂停 / 继续
+  pauseBtn.addEventListener('click', () => setPaused(!scene.isPaused));
+  resumeBtn.addEventListener('click', () => setPaused(false));
+
+  // 讲解读完开下一手
+  lessonNext.addEventListener('click', continueAfterLesson);
+
+  // 主动结束这一局。讲解卡是遮罩，会把顶栏和左下角按钮全挡住，
+  // 所以讲解卡里也得有一个出口，两处走同一段逻辑。
+  const quitRun = () => {
+    hideLesson();
+    setPaused(false);
+    engine.quit();
+  };
+  $('quit-btn').addEventListener('click', quitRun);
+  $('lesson-quit').addEventListener('click', quitRun);
+
+  $('again-btn').addEventListener('click', restart);
 
   $('share-btn').addEventListener('click', () => {
     if (!lastSummary) return;
@@ -563,10 +627,47 @@ function bindEvents() {
     toast('已存下这张图');
   });
 
+  // 模式切换：右上角的常驻切换器 + 入口的两张卡
+  for (const b of document.querySelectorAll<HTMLButtonElement>('#modes .mode-btn, #start .start-card')) {
+    b.addEventListener('click', () => setMode((b.dataset.mode as Mode) ?? 'game'));
+  }
+  lkForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    void runLookup(lkInput.value);
+  });
+
   document.addEventListener('keydown', (e) => {
+    // 在输入框里打字时不劫持按键，否则在查账框里打不出「/」
+    const t = e.target as HTMLElement | null;
+    const typing =
+      !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+
     if (e.key === 'Escape') {
-      if (pvOpen) closePreview();
+      // 入口上必须选一个模式，Esc 不生效
+      if (!startEl.hidden) return;
+      // 从最上层往下关：以身入局 → 预览 → 规则
+      if (mode === 'lookup' && !lookupEl.hidden) setMode('game');
+      else if (pvOpen) closePreview();
       else helpEl.hidden = true;
+      return;
+    }
+    if (typing) return;
+    if (!startEl.hidden) return;
+    if (e.key === '/') {
+      e.preventDefault();
+      openLookup();
+      return;
+    }
+    // 讲解卡开着的时候，回车 = 继续。故意不绑 Esc，
+    // 免得手快把讲解一路按掉，那就白做了。
+    if (!lessonEl.hidden && e.key === 'Enter') {
+      e.preventDefault();
+      continueAfterLesson();
+      return;
+    }
+    // 暂停。放在 help/settle 的拦截之前，任何时候都能按。
+    if (e.key === 'p' || e.key === 'P') {
+      setPaused(!scene.isPaused);
       return;
     }
     if (!helpEl.hidden || !settleEl.hidden) return;
@@ -635,6 +736,337 @@ function showScore(s: ScoreBreakdown) {
   pop.classList.add('is-on');
   window.clearTimeout(scorePopTimer);
   scorePopTimer = window.setTimeout(() => pop.classList.remove('is-on'), 1700);
+}
+
+/* ============================================================
+   讲解卡
+   ------------------------------------------------------------
+   这是整个游戏真正「教」的地方。每次决策之后都必须把原书那条建议
+   讲完：说人话、收益、证据、来源。读完点「继续」才开下一手，
+   不这么做的话玩家会一路点过去，什么也记不住。
+   ============================================================ */
+function lessonRow(k: string, v: string, bad = false) {
+  const p = document.createElement('p');
+  p.className = 'lesson-row';
+  const kk = document.createElement('span');
+  kk.className = 'lesson-k';
+  kk.textContent = k;
+  const vv = document.createElement('span');
+  vv.className = bad ? 'lesson-v is-bad' : 'lesson-v';
+  vv.textContent = v;
+  p.append(kk, vv);
+  return p;
+}
+
+function lessonCard(card: CardRecord, kicker: string, compact = false) {
+  const wrap = document.createElement('div');
+  const k = document.createElement('p');
+  k.className = 'lesson-kicker';
+  k.textContent = kicker;
+  const t = document.createElement('h3');
+  t.className = 'lesson-title';
+  t.textContent = card.title;
+  wrap.append(k, t);
+  if (card.plain) wrap.append(lessonRow('说人话', card.plain));
+  // 选错的那张只留「说人话」。它只是用来对照的，
+  // 把收益和备注也铺开会把真正该读的答案挤出屏幕。
+  if (!compact) {
+    if (card.gainText) wrap.append(lessonRow('收益', card.gainText));
+    if (card.note) wrap.append(lessonRow('备注', card.note));
+  }
+  return wrap;
+}
+
+function showLesson(l: Lesson) {
+  lessonVerdict.textContent = l.ok
+    ? '接住了'
+    : l.by === 'pass'
+      ? '你放过了它'
+      : '这一手没接住';
+  lessonVerdict.className = `lesson-verdict ${l.ok ? 'is-ok' : 'is-bad'}`;
+
+  const parts: Node[] = [];
+
+  // 先把问题复述一遍，不然读完讲解已经忘了刚才在防什么
+  const riskBox = document.createElement('div');
+  riskBox.className = 'lesson-risk';
+  const rb = document.createElement('b');
+  rb.textContent = l.risk.title;
+  const rs = document.createElement('span');
+  rs.textContent = l.risk.scene;
+  riskBox.append(rb, rs);
+  parts.push(riskBox);
+
+  // 选错了就先说你选的那条讲的是别的事，再亮正确答案
+  if (!l.ok && l.picked) {
+    parts.push(
+      lessonCard(
+        l.picked,
+        l.reason === 'cost' ? '你出的这张（讲对了，但你出不起）' : '你出的这张',
+        true
+      )
+    );
+    const hr = document.createElement('hr');
+    hr.className = 'lesson-hr';
+    parts.push(hr);
+  }
+
+  parts.push(lessonCard(l.answer, l.ok ? '原书里接住它的就是这条' : '原书里能接住它的是这条'));
+
+  const src = l.answer.sources?.[0];
+  const foot = document.createElement('p');
+  foot.className = 'lesson-src';
+  foot.textContent =
+    `证据 ${gradeOf(l.answer.grade)} · ${l.answer.chapterTitle}（${l.answer.chapter}-${l.answer.num}）` +
+    (src ? `\n来源：${src.text}` : '');
+  parts.push(foot);
+
+  lessonBody.replaceChildren(...parts);
+  lessonEl.hidden = false;
+  /*
+   * 一定要 preventScroll，并且把面板滚回顶部。
+   * 默认的 focus() 会把焦点按钮滚进视口，而按钮在面板最底下，
+   * 结果玩家一睁眼看到的是讲解的结尾，前面全被滚过去了。
+   */
+  const inner = lessonEl.querySelector<HTMLElement>('.lesson-inner');
+  if (inner) inner.scrollTop = 0;
+  lessonNext.focus({ preventScroll: true });
+}
+
+function hideLesson() {
+  lessonEl.hidden = true;
+}
+
+/** 讲解读完，开下一手 */
+function continueAfterLesson() {
+  hideLesson();
+  engine.resumeTurn();
+}
+
+/* ============================================================
+   暂停 / 开新局
+   ============================================================ */
+function setPaused(v: boolean) {
+  scene.setPaused(v);
+  pausedEl.hidden = !v;
+  pauseBtn.textContent = v ? '继续' : '暂停';
+  if (v) resumeBtn.focus();
+}
+
+/**
+ * 开新局。所有开局入口都走这里，保证「每次开局都清一遍旧数据」：
+ * 井里的层、正在下落的方块、碎片、暂停状态、讲解卡，一个都不留。
+ * 以前「开始」按钮是直接调 engine.start() 的，绕过 scene.reset()，
+ * 上一局的方块会留在场上。
+ */
+function restart() {
+  closePreview();
+  hideLesson();
+  setPaused(false);
+  scene.reset();
+  settleEl.hidden = true;
+  engine.start();
+}
+
+/* ============================================================
+   查账：不打游戏，直接查建议
+   ------------------------------------------------------------
+   两段检索：
+     ① 本地（离线，毫秒级）：672 张卡 + 284 个风险，中文二元组 + IDF
+     ② Jev 复核（classifier.dev 一次请求）：把本地前 50 条交给它判相关性
+   本地那一段是必须的：它让结果立刻出现，而且在 Jev 不可用时
+   （实测会 403 proxy_requires_payment）整个功能还能用。
+   ============================================================ */
+const LOOKUP_LOCAL = 60;
+/** 送去复核的条数。50 条约 6KB，一次请求；classifier.dev 每分钟 3000 次分类，够用 */
+const LOOKUP_BATCH = 50;
+const LOOKUP_SHOW = 8;
+
+let searchIndex: SearchIndex | null = null;
+let lookupAbort: AbortController | null = null;
+const lookupCache = new Map<string, { hits: Hit[]; note: string }>();
+
+const EXAMPLES = [
+  '房东不退我押金',
+  '孩子一年近视涨了一百度',
+  '公司欠我加班费不给',
+  '吃了头孢之后喝了酒',
+  '被狗咬破了皮',
+  '手机丢了怎么办',
+];
+
+const cardById = new Map<string, CardRecord>();
+
+function lookupBadge(hit: Hit): { text: string; cls: string } {
+  if (hit.kind === 'risk') return { text: '你可能遇到的是', cls: 'is-risk' };
+  if (hit.verdict === 'direct') return { text: 'Jev 确认：直接回答了', cls: 'is-direct' };
+  if (hit.verdict === 'near') return { text: 'Jev：沾边', cls: '' };
+  if (hit.verdict === 'off') return { text: 'Jev：无关', cls: '' };
+  return { text: '本地匹配', cls: '' };
+}
+
+function lookupHitEl(hit: Hit): HTMLElement {
+  const el = document.createElement('article');
+  el.className = 'lk-hit';
+  if (hit.verdict === 'direct') el.classList.add('is-direct');
+  if (hit.kind === 'risk') el.classList.add('is-risk');
+
+  const b = lookupBadge(hit);
+  const badge = document.createElement('span');
+  badge.className = `lk-badge ${b.cls}`.trim();
+  badge.textContent = b.text;
+
+  const title = document.createElement('h3');
+  title.className = 'lk-hit-title';
+  title.textContent = hit.title;
+
+  const body = document.createElement('p');
+  body.className = 'lk-hit-body';
+  body.textContent = hit.kind === 'risk' ? hit.body : (hit.card?.plain ?? '');
+
+  const meta = document.createElement('p');
+  meta.className = 'lk-hit-meta';
+  if (hit.card) {
+    const c = hit.card;
+    const src = c.sources?.[0];
+    const gain = c.gainText ? `\n收益 ${c.gainText.slice(0, 96)}…` : '';
+    const source = src ? `\n来源 ${src.text.slice(0, 90)}` : '';
+    meta.textContent =
+      `成本 ${c.costText.split('。')[0]} · 证据 ${gradeOf(c.grade)} · ${c.chapterTitle}（${c.id}）` +
+      gain +
+      source;
+  } else if (hit.risk) {
+    const answers = hit.risk.keys
+      .map((id) => cardById.get(id))
+      .filter((c): c is CardRecord => !!c)
+      .slice(0, 3)
+      .map((c) => `${c.id}　${c.title.slice(0, 24)}`);
+    meta.textContent = `原书里能接住它的是：\n${answers.join('\n')}`;
+  }
+
+  el.append(badge, title, body, meta);
+  return el;
+}
+
+function renderLookup(hits: Hit[], note: string) {
+  lkStatus.textContent = note;
+
+  if (!hits.length) {
+    const empty = document.createElement('p');
+    empty.className = 'lk-empty';
+    empty.textContent = '没找到。换个说法试试，或者点上面的例子。';
+    lkResults.replaceChildren(empty);
+    return;
+  }
+
+  /*
+   * 命中风险时，把它的答案卡直接接在后面。
+   * 用户问的是「我该怎么办」，看到「你可能遇到的是 X」之后
+   * 立刻要能看到能接住 X 的那几条，不然还要再查一次。
+   */
+  const queue: Hit[] = [];
+  const seen = new Set<string>();
+  for (const h of hits) {
+    if (seen.has(h.id)) continue;
+    seen.add(h.id);
+    queue.push(h);
+    if (h.risk) {
+      for (const id of h.risk.keys.slice(0, 3)) {
+        if (seen.has(id)) continue;
+        const c = cardById.get(id);
+        if (!c) continue;
+        seen.add(id);
+        queue.push({ kind: 'card', id: c.id, title: c.title, body: c.plain, card: c, score: h.score, verdict: null });
+      }
+    }
+    if (queue.length >= LOOKUP_SHOW) break;
+  }
+
+  lkResults.replaceChildren(...queue.map(lookupHitEl));
+}
+
+async function runLookup(raw: string) {
+  const query = raw.trim();
+  if (!query || !searchIndex) return;
+
+  // ① 本地先出结果，不等网络
+  const local = searchLocal(searchIndex, query, LOOKUP_LOCAL);
+  renderLookup(mergeHits(local), `本地命中 ${local.length} 条，正在让 Jev 复核…`);
+
+  const cached = lookupCache.get(query);
+  if (cached) {
+    renderLookup(cached.hits, cached.note);
+    return;
+  }
+
+  // ② Jev 复核前 N 条
+  lookupAbort?.abort();
+  const ac = new AbortController();
+  lookupAbort = ac;
+  const batch = local.slice(0, LOOKUP_BATCH);
+  const r = await jevCheck(query, batch, ac.signal);
+  if (ac.signal.aborted) return;
+
+  const byId = new Map(batch.map((d, i) => [d.id, r.verdicts[i]]));
+  const merged = mergeHits(local.map((h) => ({ ...h, verdict: byId.get(h.id) ?? null })));
+  const direct = r.verdicts.filter((v) => v === 'direct').length;
+  // 失败原因可能很长（classifier.dev 会把整句政策说明塞在 error 里），截断再显示
+  const why = r.error && r.error.length > 58 ? `${r.error.slice(0, 58)}…` : r.error;
+  const note = r.ok
+    ? `本地命中 ${local.length} 条 · Jev 复核了前 ${batch.length} 条，其中 ${direct} 条直接回答了这个问题`
+    : `本地命中 ${local.length} 条 · Jev 暂时用不了（${why}），下面是本地匹配`;
+
+  lookupCache.set(query, { hits: merged, note });
+  renderLookup(merged, note);
+}
+
+/* ============================================================
+   模式：以身入局 / 游戏人生
+   ------------------------------------------------------------
+   入口先让用户自己选。选完之后右上角常驻切换器，
+   两个模式之间随时来回，游戏进度不丢（只是冻住）。
+   ============================================================ */
+type Mode = 'lookup' | 'game';
+
+let mode: Mode = 'game';
+/** 第一次进游戏人生时要先把规则给出来，之后切换不再打断 */
+let gameStarted = false;
+
+function setMode(next: Mode) {
+  mode = next;
+  document.body.classList.remove('is-starting');
+  document.body.classList.toggle('mode-lookup', next === 'lookup');
+  document.body.classList.toggle('mode-game', next === 'game');
+  startEl.hidden = true;
+
+  for (const b of document.querySelectorAll<HTMLButtonElement>('#modes .mode-btn')) {
+    const on = b.dataset.mode === next;
+    b.classList.toggle('is-on', on);
+    b.setAttribute('aria-selected', String(on));
+  }
+
+  if (next === 'lookup') {
+    // 方块冻住，不然一边读一边掉
+    scene.setPaused(true);
+    lookupEl.hidden = false;
+    lkInput.focus();
+    lkInput.select();
+  } else {
+    lookupEl.hidden = true;
+    lookupAbort?.abort();
+    lookupAbort = null;
+    scene.setPaused(false);
+    if (!gameStarted) {
+      gameStarted = true;
+      helpEl.hidden = false;
+    }
+  }
+}
+
+function openLookup(prefill?: string) {
+  if (prefill) lkInput.value = prefill;
+  setMode('lookup');
+  if (prefill) void runLookup(prefill);
 }
 
 /* ============================================================

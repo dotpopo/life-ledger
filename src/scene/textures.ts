@@ -117,7 +117,6 @@ export function makeCardFace(card: CardRecord): THREE.CanvasTexture {
   const W = 520;
   const H = 760;
   const { cv, ctx } = make2d(W, H);
-  const meta = GROUPS[card.group];
   const grade = gradeOf(card.grade);
   const gm = GRADE_META[grade];
 
@@ -137,13 +136,18 @@ export function makeCardFace(card: CardRecord): THREE.CanvasTexture {
   }
   ctx.restore();
 
-  // 顶部分组色带
-  ctx.fillStyle = meta.css;
+  /*
+   * 顶部色带只放证据等级，不放「域」。
+   * 以前这里印着域名、还刷成该域的颜色，而风险条上的域标签用的是同一套色，
+   * 于是「颜色对上就是答案」，根本不用读内容。现在牌面不给分类线索，
+   * 想知道哪张管用，只能读它讲的是什么。
+   */
+  ctx.fillStyle = gm.css;
   ctx.fillRect(0, 0, W, 76);
   ctx.fillStyle = '#fff';
   ctx.font = `600 30px ${SANS}`;
   ctx.textBaseline = 'middle';
-  ctx.fillText(card.group, 30, 40);
+  ctx.fillText(`证据 ${grade}`, 30, 40);
   ctx.font = `400 17px ${MONO}`;
   ctx.textAlign = 'right';
   ctx.fillStyle = 'rgba(255,255,255,0.72)';
@@ -271,6 +275,30 @@ export function makeCardBack(): THREE.CanvasTexture {
 }
 
 /** 风险块顶面的贴图 */
+/**
+ * 按可用宽度自动缩字号，并把最终字号设进 ctx。
+ *
+ * 题库从 18 条扩到 284 条之后，风险标题从 2 个字到 8 个字都有，
+ * 原来写死 88px 的做法必然溢出画布（4 个字就到边了）。
+ */
+function fitSize(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxW: number,
+  make: (size: number) => string,
+  start: number,
+  min = 22
+): number {
+  let size = start;
+  while (size > min) {
+    ctx.font = make(size);
+    if (ctx.measureText(text).width <= maxW) break;
+    size -= 2;
+  }
+  ctx.font = make(size);
+  return size;
+}
+
 export function makeRiskFace(risk: Risk): THREE.CanvasTexture {
   const S = 512;
   const { cv, ctx } = make2d(S, S);
@@ -307,7 +335,7 @@ export function makeRiskFace(risk: Risk): THREE.CanvasTexture {
   ctx.fillText(risk.group, S / 2, 128);
 
   ctx.fillStyle = '#f2efe6';
-  ctx.font = `600 88px ${SANS}`;
+  fitSize(ctx, risk.title, S - 120, (n) => `600 ${n}px ${SANS}`, 88);
   ctx.fillText(risk.title, S / 2, S / 2 + 12);
 
   ctx.fillStyle = 'rgba(242,239,230,0.4)';
@@ -338,7 +366,8 @@ export function makeLayerTexture(risk: Risk): THREE.CanvasTexture {
 
   ctx.textBaseline = 'middle';
   ctx.fillStyle = 'rgba(255,255,255,0.95)';
-  ctx.font = `600 46px ${SANS}`;
+  // 右边要给域标签留位置，所以可用宽度不是整宽
+  fitSize(ctx, risk.title, W - 200, (n) => `600 ${n}px ${SANS}`, 46);
   ctx.fillText(risk.title, 26, H / 2 - 2);
 
   ctx.textAlign = 'right';

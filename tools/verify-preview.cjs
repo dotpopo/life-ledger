@@ -55,7 +55,9 @@ const ARGS = [
         open: true,
         pos: document.getElementById('pv-pos').textContent,
         title: document.getElementById('pv-title').textContent.slice(0, 18),
-        group: document.getElementById('pv-group').textContent,
+        // 这里故意不再取「域」。牌面已经不显示分类了，
+        // 显示分类就等于把答案标出来。
+        id: document.getElementById('pv-id').textContent,
         页码点: (() => {
           const ds = Array.from(document.querySelectorAll('#pv-dots .pv-dot'));
           return `${ds.length} 个 / 第 ${ds.findIndex((d) => d.classList.contains('is-on')) + 1} 个亮`;
@@ -72,6 +74,8 @@ const ARGS = [
   p.on('pageerror', (e) => errs.push('PAGEERROR: ' + e.message));
   await p.goto('http://127.0.0.1:3100/', { waitUntil: 'domcontentloaded', timeout: 40000 });
   await waitBoot(p);
+  await p.click('#start .start-card[data-mode="game"]');
+  await p.waitForTimeout(400);
   await p.click('#help-close');
   await p.waitForTimeout(2200);
 
@@ -210,6 +214,9 @@ const ARGS = [
   m.on('pageerror', (e) => errs.push('MOBILE PAGEERROR: ' + e.message));
   await m.goto('http://127.0.0.1:3100/', { waitUntil: 'domcontentloaded', timeout: 40000 });
   await waitBoot(m);
+  // 入口现在先出模式选择
+  await m.click('#start .start-card[data-mode="game"]');
+  await m.waitForTimeout(400);
   await m.click('#help-close');
   await m.waitForTimeout(2400);
 

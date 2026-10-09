@@ -111,6 +111,8 @@ export class WellScene {
   private hovered = -1;
   private dangerLevel = 0;
   private dangerPulse = 0;
+  /** 暂停时冻住仿真时间，画布停在最后一帧 */
+  private paused = false;
 
   /* 随视口宽高比变化的取景参数。
      竖屏时垂直视野不变、水平视野会被压窄，手牌最外两张会被切在屏幕外，
@@ -611,6 +613,19 @@ export class WellScene {
     return Math.min(f.t / f.duration, 1);
   }
 
+  /** 暂停 / 继续。暂停时仿真时间不走，方块停在半空。 */
+  setPaused(v: boolean) {
+    if (this.paused === v) return;
+    this.paused = v;
+    // 恢复时把 last 重新对准，否则暂停这段时间会被算成一帧的超长 delta
+    this.last = performance.now();
+    this.frameAccum = 0;
+  }
+
+  get isPaused() {
+    return this.paused;
+  }
+
   /**
    * 一锤定音选错时调用：把正在下落的方块砸下去。
    *
@@ -684,7 +699,14 @@ export class WellScene {
   clearLayers() {
     for (const m of [...this.layerGroup.children]) {
       this.layerGroup.remove(m);
-      this.disposeMesh(m as THREE.Mesh);
+      // 单个 dispose 失败不能让整个循环中断。
+      // 一中断，剩下的层就留在场上，表现就是「上一局的方块没清掉」，
+      // 而且控制台一点线索都没有。
+      try {
+        this.disposeMesh(m as THREE.Mesh);
+      } catch (e) {
+        console.warn('[clearLayers] 释放某一层失败', e);
+      }
     }
   }
 
@@ -721,19 +743,37 @@ export class WellScene {
   }
 
   reset() {
+    /*
+     * 每一步都单独兜异常，最后再兜一次 clearLayers()。
+     * 清理过程里任何一步抛异常，后面的清理就会被跳过，
+     * 表现就是「上一局的方块还在场上」，而且控制台一点线索都没有。
+     */
     this.clearLayers();
-    if (this.falling) {
-      this.scene.remove(this.falling.mesh);
-      this.disposeMesh(this.falling.mesh);
-      this.falling = null;
+    try {
+      if (this.falling) {
+        this.scene.remove(this.falling.mesh);
+        this.disposeMesh(this.falling.mesh);
+      }
+    } catch (e) {
+      console.warn('[reset] 清理下落中的方块失败', e);
     }
-    for (const s of this.shards) {
-      this.shardGroup.remove(s.mesh);
-      this.disposeMesh(s.mesh);
+    this.falling = null;
+    try {
+      for (const s of this.shards) {
+        this.shardGroup.remove(s.mesh);
+        this.disposeMesh(s.mesh);
+      }
+    } catch (e) {
+      console.warn('[reset] 清理碎片失败', e);
     }
     this.shards = [];
+    // 再兜一次。层没清干净是最要命的，宁可多跑一遍
+    this.clearLayers();
     this.dangerLevel = 0;
     this.dangerPulse = 0;
+    this.hovered = -1;
+    this.framing = 0;
+    this.framingTarget = 0;
   }
 
   /* ============================================================
@@ -801,6 +841,15 @@ export class WellScene {
     if (this.frameAccum < this.frameStep) return;
     const delta = Math.min(this.frameAccum, 0.05);
     this.frameAccum = 0;
+
+    /*
+     * 暂停：直接把仿真时间冻住。
+     * 注意要放在累加 frameAccum 之后，否则暂停期间攒下的时间会在
+     * 恢复的一瞬间全砸进去，方块会跳一大段。
+     * 画布保持最后一帧，暂停遮罩是 DOM，不受影响。
+     */
+    if (this.paused) return;
+
     this.elapsed += delta;
 
     const motion = this.reducedMotion ? 0.25 : 1;
@@ -922,10 +971,22 @@ export class WellScene {
   }
 
   private disposeMesh(mesh: THREE.Mesh) {
-    mesh.geometry.dispose();
+    // 内部也各自兜一层。几何和材质是独立的 GPU 资源，
+    // 一个失败不该把另一个也带下水。
+    try {
+      mesh.geometry.dispose();
+    } catch (e) {
+      console.warn('[disposeMesh] 几何释放失败', e);
+    }
     const mat = mesh.material as THREE.Material | THREE.Material[];
-    if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-    else mat.dispose();
+    const list = Array.isArray(mat) ? mat : [mat];
+    for (const m of list) {
+      try {
+        m.dispose();
+      } catch (e) {
+        console.warn('[disposeMesh] 材质释放失败', e);
+      }
+    }
   }
 
   /** 调试钩子，给无头截图脚本用 */
